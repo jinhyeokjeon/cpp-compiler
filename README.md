@@ -13,3 +13,5 @@
 ## 목차
 
 [1. 시작하며](./descriptions/chapter1.md)
+
+[2. 어휘 분석](./descriptions/chapter2.md)
