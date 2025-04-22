@@ -413,3 +413,90 @@ static auto parseBlock() -> std::vector<Statement*> {
 ```
 
 ### 3.2.6 식
+
+식에는 피연산자와 연산자가 있고, 연산자에는 단항 연산자와 이항 연산자가 있다. 이항 연산자에는 우선 순위가 있는데, 다음은 이항 연산자들의 우선 순위를 보여준다. 위쪽일수록 우선 순위가 높다.
+
+1. 산술 * / % 연산자
+
+2. 산술 + - 연산자
+
+3. 관계 연산자 
+
+4. 논리 and 연산자
+
+5. 논리 or 연산자
+
+6. 대입 연산자
+
+우선순위가 낮은 대입 연산자가 가장 나중에 계산되고, 우선순위가 가장 높은 산술 연산자 중 곱하기, 나누기, 나머지 연산이 가장 먼저 계산된다. 그런데 구문트리는 자식 노드가 없는 잎 노드부터 차례로 계산하므로 우선순위가 낮은 연산자부터 분석해야 한다.
+
+예를 들어 1 * 2 + 3 * 4 구문 트리는 다음과 같이 구성된다.
+
+![alt text](images/2.png)
+
+즉 우선순위가 높은 연산자는 먼저 계산되어야 하므로 우선순위가 높은 연산자일수록 루트 노드에서부터 멀리 자리해야 한다. 즉 우선순위가 가장 낮은 연산자부터 먼저 분석하면서, 우선순위가 높은 연산자를 이후에 분석해야한다.
+
+따라서 식을 분석하는 parseExpression() 함수는 parseAssignment() 함수를 호출 해 우선순위가 가장 낮은 대입 연산자부터 분석을 시작한다. parseExpression() 함수는 다음과 같다.
+```cpp
+auto parseExpression() -> Expression* {
+  return parseAssignment();
+}
+```
+
+### 3.2.7 대입 연산자
+
+대입 연산자는 이항 연산자이므로 두 개의 피연산자를 가진다. 둘 중 왼쪽 피연산자 식을 먼저 분석하는데, 대입 연산자보다 우선순위가 한 단계 더 높은 연산자는 or 연산자이므로, or 연산자를 분석하는 parseOr() 함수를 호출한다.
+```cpp
+auto parseAssignment() -> Expression* {
+  Expression* result = parseOr();
+}
+```
+
+다음 코드와 같이 왼쪽 식을 분석한 후 현재 토큰이 대입 연산자가 아니라면 parseOr() 함수가 반환한 식 노드를 그대로 반환하며 분석을 종료한다. 식의 분석은 우선순위가 가장 낮은 연산자부터 시작해 우선순위가 높은 연산자 순으로 분석하므로, 왼쪽 식의 분석이 끝난 시점에서 대입 연산자보다 우선순위가 더 높은 연산자들의 분석은 모두 끝난 상태가 된다. 따라서 현재 토큰이 대입 연산자가 아니라면 분석이 끝난 것임을 알 수 있다.
+```cpp
+if (current->kind != Kind::Assignment) {
+  return result;
+}
+skipCurrent(Kind::Assignment);
+```
+
+대입 연산자의 왼쪽 식으로 올 수 있는 것은 참조가 가능한 변수다. 값을 수정할 수 없는 리터럴이나 함수 호출은 대입 연산자의 왼쪽 식으로 올 수 없으므로, 왼쪽 식이 변수 값의 참조를 표현하는 GetVariable 노드인지 확인한다.
+
+dynamic_cast<GetVariable*>(result) : result가 GetVariable* 형이 아니면 nullptr, 맞다면 변환하여준다.
+```cpp
+if(GetVariable* getVariable = dynamic_cast<GetVariable*>(result)) {
+}
+```
+
+왼쪽 식이 변수 값의 참조를 표현하는 GetVariable 노드라면, 변수 값의 수정을 표현하는 SetVariable 노드를 생성해 반환하며 분석을 종료한다. SetVariable 노드의 변수명은 GetVariable 노드의 변수명으로 설정하고, SetVariable 노드의 식은 parseAssignment() 함수를 재귀 호출해 설정한다.
+
+parseAssignment() 함수를 호출하는 이유는 대입연산자가 연달아 있을 때의 결합 방향은 오른쪽에서 왼쪽이기 때문이다.
+
+예를 들어 a = b = 3; 이라는 식이 있을 때 b = 3 이 먼저 수행되고, 그 결과값이 반영되어 a = 3 이 계산된다.
+```cpp
+SetVariable* result = new SetVariable();
+result->name = getVariable->name;
+result->value = parseAssignment();
+return result;
+```
+
+대입 연산자의 왼쪽 식에 올 수 있는 것에는 배열이나 맵의 원소 참조도 있으므로, 왼쪽 식이 원소 참조를 표현하는 GetElement 노드인지 확인한다.
+```cpp
+if(GetElement* getElement = dynamic_cast<GetElement*>(result)) {
+}
+```
+
+변수 참조와 마찬가지로 SetElement 노드를 생성해 반환하며 분석을 종료하는데, 반환하기 전에 SetElement 노드의 피연산자 식과 인덱스 식을 GetElement 노드의 피연산자 식과 인덱스 식으로 설정하고, 오른쪽 식은 대입 연산자를 분석하는 parseAssignment() 함수를 재귀 호출해 설정한다.
+```cpp
+SetElement* result = new SetElement();
+result->sub = getElement->sub;
+result->index = getElement->index;
+result->value = parseAssignment();
+return result;
+```
+
+대입 연산자의 왼쪽 식이 변수 참조도, 원소 참조도 아니라면 잘못된 식이므로 다음과 같이 오류 메시지를 출력하고 분석을 종료한다.
+```cpp
+cout << "Wrong assignment Expression" << endl;
+exit(1);
+```

@@ -184,9 +184,35 @@ static auto parseExpressionStatement() -> ExpressionStatement* {
   return result;
 }
 
-static auto parseExpression() -> Expression*;
-static auto parseAssignment() -> Expression*;
-static auto parseOr() -> Expression*;
+static auto parseExpression() -> Expression* {
+  return parseAssignment();
+}
+static auto parseAssignment() -> Expression* {
+  Expression* result = parseOr();
+  if (current->kind != Kind::Assignment) {
+    return result;
+  }
+  skipCurrent(Kind::Assignment);
+  if (GetVariable* getVariable = dynamic_cast<GetVariable*>(result)) { // result가 GetVariable Pointer 형이 아니라면 nullptr, 맞다면 변환
+    SetVariable* result = new SetVariable();
+    result->name = getVariable->name;
+    result->value = parseAssignment();
+    delete getVariable;
+    return result;
+  }
+  if (GetElement* getElement = dynamic_cast<GetElement*>(result)) {
+    SetElement* result = new SetElement();
+    result->sub = getElement->sub;
+    result->index = getElement->index;
+    result->value = parseAssignment();
+    delete getElement;
+    return result;
+  }
+  cout << "Wrong assignment Expression" << endl;
+  exit(1);
+}
+static auto parseOr() -> Expression* {
+}
 static auto parseAnd() -> Expression*;
 static auto parseRelational() -> Expression*;
 static auto parseArithmetic1() -> Expression*;
