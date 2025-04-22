@@ -12,5 +12,7 @@ auto main() -> int {
     }
   )""";
   vector<Token> tokenList = scan(sourceCode);
-  printTokenList(tokenList);
+  Program* syntaxTree = parse(tokenList);
+
+  printSyntaxTree(syntaxTree);
 }

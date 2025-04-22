@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
+#include <iomanip>
 #include "Token.h"
-#include "iomanip"
 using namespace std;
 
 auto printTokenList(vector<Token>& tokenList) -> void {

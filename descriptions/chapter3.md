@@ -204,7 +204,212 @@ struct MapLiteral: Expression {
 
 구문 분석은 문과 식으로 구성된 소스 코드의 구조를 분석하는 것이고, 구문 트리는 분석된 소스 코드의 구조를 표현하는 트리 자료구조다. 구문 분석기는 소스 코드의 구문을 분석하는 프로그램을 뜻하므로 토큰 리스트를 입력받아 구문 트리를 출력한다.
 
-구분 분석을 하는 parse() 함수를 Main.cpp 파일에 선언한다.
+구분 분석을 하는 parse() 함수를 Main.cpp 파일에 추가한다.
 
 ```cpp
+auto main() -> int {
+  string sourceCode = R"""(
+    func main() {
+      printLine("Hello, World!"); // print Hello, World
+      printLine(1 + 2 * 3); // arithmetic calculation
+    }
+  )""";
+  vector<Token> tokenList = scan(sourceCode);
+  Program* syntaxTree = parse(tokenList);
+
+  printSyntaxTree(syntaxTree);
+}
 ```
+
+### 3.2.1 선언 영역
+
+기본적으로 parse() 함수에서는 토큰 리스트를 처음부터 끝까지 토큰 단위로 순회하며 구문 트리를 구성해 나간다. 어휘 분석에서 현재 문자가 널 문자가 아닐 때까지 순회를 한 것처럼 구문 분석에서도 현재 토큰이 EndOfToken 토큰이 아닐 때ㅐ까지 순회를 하고, 순회가 끝나면 구문 트리의 루트 노드를 반환한다.
+
+코드는 다음과 같다.
+```cpp
+static vector<Token>::iterator current;
+
+auto parse(vector<Token>& tokens) -> Program* {
+  Program* result = new Program();
+  current = tokens.begin();
+  while (current->kind != Kind::EndOfTokenList) {
+  }
+  return result;
+}
+```
+위 코드를 보면 전역변수 current가 매개변수로 받은 토큰 리스트의 첫 번째 토큰을 가리키도록 하는 것을 볼 수 있다. while문에서는 현재 토큰이 무엇이냐에 따라 행동을 달리한다. 기본적으로 선언 영역에 올 수 없는 토큰인 경우에는 오류 메시지를 출력하며 구문 분석을 종료한다. 유랭은 선언 영역에 함수의 정의만 올 수 있다.
+
+다음 코드와 같이 while문 내에서 현재 토큰이 무엇인지 확인하고, Function 토큰인 경우 parseFunction() 을 호출하여 functions 에 추가한다.
+
+```cpp
+auto parse(vector<Token>& tokens) -> Program* {
+  Program* result = new Program();
+  current = tokens.begin();
+  while (current->kind != Kind::EndOfTokenList) {
+    switch (current->kind) {
+    case Kind::Function: {
+      result->functions.push_back(parseFunction());
+      break;
+    }
+    default: {
+      cout << *current << " is wrong." << endl;
+      exit(1);
+    }
+    }
+  }
+  return result;
+}
+```
+
+함수의 정의를 분석하는 parseFunction() 함수가 호출된 시점에 현재 토큰은 Function이다. 그런데 Function 토큰은 함수 정의의 시작을 나타내는 토큰일 뿐이므로 토큰을 버린다.
+```cpp
+auto parseFunction() -> Function* {
+  Function* result = new Function();
+  skipCurrent(Kind::Function);
+}
+```
+
+위 코드에서 호출한 skipCurrent() 보조함수는 매개변수로 받은 토큰이 현재 토큰과 같지 않으면 프로그램을 종료하고, 같으면 현재 토큰을 건너 뛴다. 코드는 다음과 같다.
+```cpp
+static auto skipCurrent(Kind kind) -> void {
+  if (current->kind != kind) {
+    cout << toString(kind) << " is required." << endl;
+    exit(1);
+  }
+  ++current;
+}
+```
+
+function 키워드 다음에는 함수의 이름이 오기 때문에 현재 토큰의 문자열을 앞서 생성했는 함수 노드에 설정하고 현재 토큰을 건너 뛴다.
+```cpp
+result->name = current->str;
+skipCurrent(Kind::Identifier);
+```
+
+함수의 이름 뒤에는 괄호로 감싸진 매개변수 목록이 나오고, 매개변수 목록은 콤마로 구분된다. 괄호나 콤마와 같은 구분자, var 키워드는 건너 뛰면서 매개변수들의 이름을 함수 노드의 매개변수 리스트에 추가한다. 이후 오른쪽 괄호, 여는 중괄호도 건너뛴다.
+```cpp
+static auto parseFunction() -> Function* {
+  Function* result = new Function();
+  skipCurrent(Kind::Function);
+  result->name = current->str;
+  skipCurrent(Kind::Identifier);
+  skipCurrent(Kind::LeftParen);
+  if (current->kind != Kind::RightParen) {
+    do {
+      skipCurrent(Kind::Variable);
+      result->parameters.push_back(current->str);
+      skipCurrent(Kind::Identifier);
+    } while (skipCurrentIf(Kind::Comma));
+  }
+  skipCurrent(Kind::RightParen);
+}
+
+static auto skipCurrentIf(Kind kind) -> bool {
+  if (current->kind != kind) return false;
+  ++current;
+  return true;
+}
+```
+
+이후에는 함수의 본문이 나온다. 함수의 본문 또한 괄호로 감싸져 있으므로 앞 뒤의 괄호는 건너뛰고 본문을 분석하는 parseBlock() 함수를 호출해 반환받은 본문의 문 리스트를 함수 노드에 저장한다.
+```cpp
+skipCurrent(Kind::RightParen);
+skipCurrent(Kind::LeftBrace);
+result->block = parseBlock();
+skipCurrent(Kind::RightBrace);
+return result;
+```
+
+### 3.2.3 본문
+
+본문을 분석하는 parseBlock() 함수는 기보적으로 현재 토큰이 본문의 끝을 나타내는 '}'가 아닐 때까지 토큰 리스트를 순회하고, 순회가 끝나면 문 리스트를 반환한다.
+```cpp
+static auto parseBlock() -> std::vector<Statement*> {
+  vector<Statement*> result;
+  while (current->kind != Kind::RightBrace) {
+  }
+  return result;
+}
+```
+
+지금까지와 동일하게 위 코드의 while문에서도 현재 토큰이 무엇이냐에 따라 행동이 결정된다. 함수의 정의와 같이 본문에 허용되지 않는 토큰이 나오면 오류 메시지를 출력하고 분석을 종료한다.
+
+```cpp
+switch(current->kind) {
+case Kind::EndOfTokenList: {
+  cout << *current << " is wrong." << endl;
+  exit(1);
+}
+}
+```
+
+### 3.2.4 변수의 선언
+
+본문에 올 수 있는 문들 중 변수의 선언을 살펴보자. 현재 토큰이 Variable이라면 변수의 선언을 분석하는 parseVariable() 함수를 호출하도록 switch 문에 조건을 추가한다.
+```cpp
+case Kind::Variable: {
+  result.push_back(parseVariable());
+  break;
+}
+```
+
+다음은 parseVariable() 함수이다. Variable 토큰을 건너 뛰고, 현재 토큰의 문자열을 변수 선언 노드의 이름으로 설정한다.
+```cpp
+auto parseVariable() -> Variable* {
+  Variable* result = new Variable();
+  skipCurrent(Kind::Variable);
+  result->name = current->str;
+  skipCurrent(Kind::Identifier);
+}
+```
+
+유랭은 항상 변수를 초기화하도록 강제한다. 따라서 변수의 이름 다음에는 무조건 대입 연산자가 나와야 한다. 이후 parseExpression() 함수를 호출해 반환받은 식 노드를 변수 선언 노드의 초기화 식으로 설정한다. 마지막으로는 현재 토큰이 세미콜론인지 확인한 후 변수 선언 노드를 반환하며 분석을 마친다.
+```cpp
+skipCurrent(Kind::Assignment);
+result->expression(parseExpression());
+skipCurrent(Kind::Semicolon);
+return result;
+```
+
+### 3.5 본문의 식
+
+변수의 선언이 var 키워드로 시작하듯이 for문은 for키워드로, if문은 if키워드로 시작한다. 따라서 시작을 표시하는 키워드가 있는 문들은 parseBlock() 함수의 switch문에 조건을 추가해 분석하면 된다.
+
+하지만 식은 별도로 시작을 표시하는 키워드가 없으므로 현재 토큰이 특정 키워드들이 아닐 때를 식의 시작으로 간주한다.
+
+parseExpressionStatement() 함수는 단순히 parseExpression() 함수를 호출해 식을 분석하고 반환받은 식 노드를 ExpressionStatement 노드로 감싸 반환한다.
+```cpp
+default: result.push_back(parseExpressionStatement()); break;
+
+static auto parseExpressionStatement() -> ExpressionStatement* {
+  ExpressionStatement* result = new ExpressionStatement();
+  result->expression = parseExpression();
+  skipCurrent(Kind::Semicolon);
+  return result;
+}
+```
+
+나머지 문을 분석하는 함수들도 이와 비슷하게 구현 가능하다.
+아래는 완성된 parseBlock() 함수의 구현이다.
+```cpp
+static auto parseBlock() -> std::vector<Statement*> {
+  vector<Statement*> result;
+  while (current->kind != Kind::RightBrace) {
+    switch (current->kind) {
+    case Kind::EndOfTokenList:  cout << *current << " is wrong" << endl; exit(1);
+    case Kind::Variable:        result.push_back(parseVariable()); break;
+    case Kind::For:             result.push_back(parseFor()); break;
+    case Kind::If:              result.push_back(parseIf());  break;
+    case Kind::Print:
+    case Kind::PrintLine:       result.push_back(parsePrint()); break;
+    case Kind::Return:          result.push_back(parseReturn()); break;
+    case Kind::Break:           result.push_back(parseBreak()); break;
+    case Kind::Continue:        result.push_back(parseContinue()); break;
+    default:                    result.push_back(parseExpressionStatement()); break;
+    }
+  }
+  return result;
+}
+```
+
+### 3.2.6 식

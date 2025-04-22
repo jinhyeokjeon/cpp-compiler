@@ -1,7 +1,8 @@
 #include <iostream>
 #include <vector>
+#include <iomanip>
 #include "Token.h"
-#include "iomanip"
+#include "Node.h"
 using namespace std;
 
 auto printTokenList(vector<Token>& tokenList) -> void {
@@ -9,4 +10,9 @@ auto printTokenList(vector<Token>& tokenList) -> void {
   cout << string(23, '-') << endl;
   for (auto& token : tokenList)
     cout << token << endl;
+}
+
+auto printSyntaxTree(Program* program) -> void {
+  for (auto& node : program->functions)
+    node->print(0);
 }

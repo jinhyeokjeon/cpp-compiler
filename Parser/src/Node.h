@@ -1,4 +1,5 @@
 #pragma once
+
 #include <vector>
 #include <string>
 #include <map>
@@ -14,7 +15,7 @@ struct Expression {
 struct Function : Statement {
   string name;
   vector<string> parameters;
-  vector<Statement> block;
+  vector<Statement*> block;
   auto print(int) -> void;
 };
 struct Program {
