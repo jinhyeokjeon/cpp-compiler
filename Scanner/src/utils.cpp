@@ -1,5 +1,8 @@
+#include <iostream>
+#include <vector>
+#include "Token.h"
 #include "iomanip"
-#include "utils.h"
+using namespace std;
 
 auto printTokenList(vector<Token>& tokenList) -> void {
   cout << setw(12) << left << "KIND" << "STRING" << endl;

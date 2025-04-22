@@ -1,6 +1,29 @@
-#include "Scanner.h"
+#include <iostream>
+#include <string>
+#include <vector>
+#include "Token.h"
+using namespace std;
+
+enum class CharType {
+  Unknown,                // 사용할 수 없는 문자
+  WhiteSpace,             // 공백, 탭, 개행
+  NumberLiteral,          // 숫자 리터럴
+  StringLiteral,          // 문자열 리터럴
+  IdentifierAndKeyword,   // 식별자, 키워드
+  OperatorAndPunctuator,  // 연산자, 구분자
+};
 
 static string::iterator current;
+auto scan(string) -> vector<Token>;
+
+static auto scanNumberLiteral() -> Token;
+static auto scanStringLiteral() -> Token;
+static auto scanIdentifierAndKeyword() -> Token;
+static auto scanOperatorAndPunctuator() -> Token;
+
+static const string oper_punc = "=+-*/%!<>,:;(){}[]";
+static auto getCharType(char) -> CharType;
+static auto isCharType(char, CharType) -> bool;
 
 auto scan(string sourceCode) -> vector<Token> {
   vector<Token> result;
@@ -41,7 +64,7 @@ auto scan(string sourceCode) -> vector<Token> {
   return result;
 }
 
-auto scanNumberLiteral() -> Token {
+static auto scanNumberLiteral() -> Token {
   string str;
   while (isCharType(*current, CharType::NumberLiteral)) {
     str += *current++;
@@ -54,7 +77,7 @@ auto scanNumberLiteral() -> Token {
   }
   return Token{ Kind::NumberLiteral, str };
 }
-auto scanStringLiteral() -> Token {
+static auto scanStringLiteral() -> Token {
   string str;
   ++current;
   while (isCharType(*current, CharType::StringLiteral)) {
@@ -67,7 +90,7 @@ auto scanStringLiteral() -> Token {
   ++current;
   return Token{ Kind::StringLiteral, str };
 }
-auto scanIdentifierAndKeyword() -> Token {
+static auto scanIdentifierAndKeyword() -> Token {
   string str;
   while (isCharType(*current, CharType::IdentifierAndKeyword)) {
     str += *current++;
@@ -78,7 +101,7 @@ auto scanIdentifierAndKeyword() -> Token {
   }
   return Token{ kind, str };
 }
-auto scanOperatorAndPunctuator() -> Token {
+static auto scanOperatorAndPunctuator() -> Token {
   string str;
   while (isCharType(*current, CharType::OperatorAndPunctuator)) {
     str += *current++;
@@ -99,8 +122,7 @@ auto scanOperatorAndPunctuator() -> Token {
   return Token{ toKind(str), str };
 }
 
-static const string oper_punc = "=+-*/%!<>,:;(){}[]";
-auto getCharType(char c) -> CharType {
+static auto getCharType(char c) -> CharType {
   if (' ' == c || '\t' == c || '\r' == c || '\n' == c) {
     return CharType::WhiteSpace;
   }
@@ -118,7 +140,7 @@ auto getCharType(char c) -> CharType {
   }
   return CharType::Unknown;
 }
-auto isCharType(char c, CharType type) -> bool {
+static auto isCharType(char c, CharType type) -> bool {
   switch (type) {
   case CharType::NumberLiteral: {
     return '0' <= c && c <= '9';
