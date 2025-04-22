@@ -1,9 +1,7 @@
 #include <iostream>
 #include <string>
+#include "Main.h"
 using namespace std;
-
-#include "Scanner.h"
-#include "utils.h"
 
 auto main() -> int {
   string sourceCode = R"""(
