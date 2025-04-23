@@ -1,7 +1,7 @@
 #include <iostream>
-#include <string>
 #include <fstream>
 #include <sstream>
+#include <string>
 #include "Main.h"
 using namespace std;
 
@@ -14,5 +14,7 @@ auto main() -> int {
   string sourceCode = buffer.str();
 
   vector<Token> tokenList = scan(sourceCode);
-  printTokenList(tokenList);
+  Program* syntaxTree = parse(tokenList);
+
+  interpret(syntaxTree);
 }

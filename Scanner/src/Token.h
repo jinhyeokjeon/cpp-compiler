@@ -17,7 +17,8 @@ enum class Kind {
   If, Elif, Else,
   Print, PrintLine,
 
-  Comment,
+  Comment, Comments,
+  Increase, Decrease,
 
   LogicalAnd, LogicalOr,
   Assignment,

@@ -9,6 +9,6 @@ using namespace std;
 
 auto scan(string&) -> vector<Token>;
 auto parse(vector<Token>&) -> Program*;
+auto interpret(Program*) -> void;
 
 auto printTokenList(vector<Token>&) -> void;
-auto printSyntaxTree(Program* program) -> void;

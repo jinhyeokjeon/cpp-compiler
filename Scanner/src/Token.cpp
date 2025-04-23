@@ -28,6 +28,9 @@ static map<string, Kind> stringToKind = {
   {"printLine",   Kind::PrintLine},
 
   {"//",          Kind::Comment},
+  {"/*",          Kind::Comments},
+  {"++",          Kind::Increase},
+  {"--",          Kind::Decrease},
 
   {"and",         Kind::LogicalAnd},
   {"or",          Kind::LogicalOr},

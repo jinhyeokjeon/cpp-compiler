@@ -14,7 +14,7 @@ enum class CharType {
 };
 
 static string::iterator current;
-auto scan(string) -> vector<Token>;
+auto scan(string&) -> vector<Token>;
 
 static auto scanNumberLiteral() -> Token;
 static auto scanStringLiteral() -> Token;
@@ -25,7 +25,7 @@ static const string oper_punc = "=+-*/%!<>,:;(){}[]";
 static auto getCharType(char) -> CharType;
 static auto isCharType(char, CharType) -> bool;
 
-auto scan(string sourceCode) -> vector<Token> {
+auto scan(string& sourceCode) -> vector<Token> {
   vector<Token> result;
   sourceCode += '\0';
   current = sourceCode.begin();
@@ -48,8 +48,8 @@ auto scan(string sourceCode) -> vector<Token> {
       break;
     }
     case CharType::OperatorAndPunctuator: {
-      auto token = scanOperatorAndPunctuator();
-      if (token.kind != Kind::Comment) {
+      Token token = scanOperatorAndPunctuator();
+      if (!(token.kind == Kind::Comment || token.kind == Kind::Comments)) {
         result.push_back(token);
       }
       break;
@@ -116,6 +116,19 @@ static auto scanOperatorAndPunctuator() -> Token {
   }
   if (str == "//") {
     while (!(*current == '\n' || *current == '\0')) {
+      ++current;
+    }
+  }
+  else if (str == "/*") {
+    while (true) {
+      if (*current == '\0') {
+        cout << "*/ is required." << endl;
+        exit(1);
+      }
+      if (*current == '*' && *(current + 1) == '/') {
+        current += 2;
+        break;
+      }
       ++current;
     }
   }

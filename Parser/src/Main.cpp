@@ -14,9 +14,7 @@ auto main() -> int {
   string sourceCode = buffer.str();
 
   vector<Token> tokenList = scan(sourceCode);
-  printTokenList(tokenList);
-  cout << endl;
-
   Program* syntaxTree = parse(tokenList);
+
   printSyntaxTree(syntaxTree);
 }

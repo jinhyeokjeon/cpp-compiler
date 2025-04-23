@@ -6,6 +6,6 @@
 #include "Token.h"
 using namespace std;
 
-auto scan(string) -> vector<Token>;
+auto scan(string&) -> vector<Token>;
 
 auto printTokenList(vector<Token>&) -> void;
