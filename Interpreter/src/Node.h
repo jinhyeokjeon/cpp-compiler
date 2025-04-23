@@ -13,16 +13,17 @@ struct Statement {
 struct Expression {
   virtual auto interpret() -> any = 0;
 };
+struct Program {
+  vector<struct Function*> functions;
+  vector<struct Variable*> variables;
+};
+
 struct Function : Statement {
   string name;
   vector<string> parameters;
   vector<Statement*> block;
   auto interpret() -> void;
 };
-struct Program {
-  vector<Function*> functions;
-};
-
 struct Return : Statement {
   Expression* expression;
   auto interpret() -> void;
@@ -85,6 +86,7 @@ struct Arithmetic : Expression {
 };
 struct Unary : Expression {
   Kind kind;
+  string name;
   Expression* sub;
   auto interpret() -> any;
 };

@@ -211,3 +211,263 @@ func main() {
 ```
 
 ![alt text](./images/7.png)
+
+## 4.2.8 변수의 선언과 참조
+
+지역변수는 선언된 위치에 따라 유효 범위가 달라진다. 블럭을 갖는 for문이나 if문을 떠올려보자. 블럭 밖에서 선언한 변수는 블럭 안에서 참조할 수 있지만, 반대로 블럭 안에서 선언한 변수는 블럭 밖에서 참조할 수 없다.
+
+또한 a()라는 함수에서 선언한 변수는 b()라는 함수에서 참조할 수 없고 그 반대도 마찬가지다.
+
+지역 변수의 유효 범위를 관리하고자 다음과 같은 데이터 타입의 전역 변수를 선언하자.
+```cpp
+static list<list<map<string, any>>> local;
+```
+
+이 전역변수의 데이터 타입에서 바깥쪽의 리스트는 함수의 블럭을 표현하고 안쪽의 리스트는 for문이나 if문 같은 문의 블럭을 표현한다. 그리고 맵에는 변수의 이름과 값을 키와 값으로 저장한다.
+
+지역변수에 이어 전역변수를 관리하기 위한 전역변수도 선언하자. 유랭은 선언 영역에서 변수의 선언을 허용하지 않고, 함수 내에서 선언되지 않은 변수의 참조를 전역변수의 참조로 간주한다. 전역변수는 블럭과 관계없이 어디서든 참조가 가능하므로 다음과 같이 변수의 이름과 값을 저장할 맵을 선언한다.
+```cpp
+static map<string, any> global;
+```
+
+interpret() 함수에서는 유랭의 엔트리 포인트 함수인 main() 함수를 호출한다. 함수를 호출하기 전에 지역 변수를 관리하기 위한 local 전역 변수에 함수 공간을 추가해야 한다. 그리고 main() 함수가 종료되면 생성했던 지역 변수 공간을 제거해야 한다. 예외 처리 코드는 return문을 구현할 때 설명한다.
+```cpp
+try {
+  local.emplace_back().emplace_front();
+  functionTable["main"]->interpret();
+} catch (ReturnException e) {
+  local.pop_back();
+}
+```
+
+위 코드에서 local 전역변수에 함수 블럭은 바깥쪽 리스트의 뒤에 추가되고, 문 블럭은 안쪽 리스트의 앞에 추가되는 것에 유의하자. 함수를 호출할 때마다 함수 블럭은 바깥쪽 리스트의 뒤에 추가되므로 현재 실행 중인 함수의 블럭은 항상 바깥쪽 리스트의 마지막에 있게 되고, for문이나 if문을 실행할 때마다 문 블럭은 안쪽 리스트의 앞에 추가되므로 현재 실행중인 문의 블럭은 항상 안쪽 리스트의 첫 번째에 있게 된다.
+
+따라서 지역변수를 참조할 때에는 바깥쪽 리스트의 마지막 원소인 리스트에서 첫 번째 원소인 맵부터 마지막 원소인 맵까지를 찾으면 된다.
+
+지역변수와 전역변수를 사용하기 위한 준비가 끝났으므로 변수의 선언을 표현하는 노드의 interpret() 함수를 작성한다. 변수의 이름과 초기화식의 결과값을 키와 값으로 local 전역 변수에 등록하면 된다.
+```cpp
+auto GetVariable::interpret() -> any {
+  for (map<string, any>& variables: local.back()) {
+    if (variables.count(name)) {
+      return variables[name];
+    }
+  }
+}
+```
+
+앞에서 유랭은 선언하지 않은 변수의 참조를 전역 변수로 간주한다고 했다. 변수의 선언을 local 전역 변수에서 찾지 못한다면 global 전역 변수에서도 찾기를 시도한다.
+```cpp
+if (global.count(name)) {
+  return global[name];
+}
+```
+
+> 선언하지 않은 변수의 참조를 전역변수로 간주한다는 것이 너무 마음에 안들어서, 전역 변수의 선언을 허용하도록 바꾸겠다. Program 노드에 vector<Variable*> variables 를 추가하여 전역변수를 담아주는 방식으로 바꾸겠다.
+
+> 또 책에서는 없는 이름의 변수를 참조하면 null을 반환한다고 하였는데, 그냥 오류를 출력하고 종료하도록 바꾸겠다.
+
+```cpp
+// Node.h
+struct Program {
+  vector<struct Function*> functions;
+  vector<struct Variable*> variables;
+};
+
+// Parser.cpp
+auto parse(vector<Token>& tokens) -> Program* {
+  Program* result = new Program();
+  current = tokens.begin();
+  while (current->kind != Kind::EndOfTokenList) {
+    switch (current->kind) {
+    case Kind::Function: {
+      result->functions.push_back(parseFunction());
+      break;
+    }
+    case Kind::Variable: {
+      result->variables.push_back(parseVariable());
+      break;
+    }
+    default: {
+      cout << *current << " is wrong." << endl;
+      exit(1);
+    }
+    }
+  }
+  return result;
+}
+
+// Interpreter.cpp
+for (Variable* variable : program->variables) {
+  if (functionTable.count(variable->name)) {
+    cout << "Function name and global variable name are duplicated." << endl;
+    exit(1);
+  }
+  global[variable->name] = variable->expression->interpret();
+}
+```
+
+```cpp
+var global = 4;
+
+func main() {
+  var local = 5;
+  print(global, ", ", local);
+}
+```
+![alt text](./images/8.png)
+
+이제 변수와 관련해서 남은 것은 변수 값의 수정을 표현하는 노드다.
+```cpp
+auto SetVariable::interpret() -> any {
+  for (map<string, any>& variables: local.back()) {
+    if(variables.count(name)) {
+      return variables[name] = value->interpret();
+    }
+  }
+  if(global.count(name)) {
+    return global[name] = value->interpret();
+  }
+
+  cout << name << " does not exist." << endl;
+  exit(1);
+}
+```
+
+아래는 전역 변수와 지역변수의 값을 수정하고 출력하는 코드이다.
+```cpp
+var global = 5;
+
+func main() {
+  var local = 10;
+  
+  printLine("global: ", global, ", local: ", local);
+
+  global = 10;
+  local = 5;
+
+  printLine("global: ", global, ", local: ", local);
+}
+```
+
+global = 10; 과 local = 5 는 각각 ExpressionStatement 노드로 감싸져 있으므로, 해당 노드의 interpret() 함수의 정의도 작성해야 올바르게 작동한다.
+```cpp
+auto ExpressionStatement::interpret() -> void {
+  expression->interpret();
+}
+```
+
+![alt text](./images/9.png)
+
+## 4.2.9 for문
+
+for문은 블럭과 제어 변수를 가지는데 제어 변수의 유효 범위는 블럭에 종속된다. 따라서 제어 변수의 유효 범위가 블럭에 종속된다. 따라서 제어 변수의 유효 범위가 블럭 안에 종속될 수 있도록 문 블럭을 먼저 생성한 후 제어 변수를 등록해야 한다.
+
+이어서 for문은 반복문이므로, 본문을 반복해서 실행할 무한 루프를 작성하고, 본문의 실행이 끝나면 앞서 생성했던 문 블럭을 제거하도록 코드를 작성한다.
+```cpp
+auto For::interpret() -> void {
+  local.back().emplace_front();
+  variable->interpret();
+
+  while(true) {
+
+  }
+  local.back.pop_front();
+}
+```
+
+for문의 전체 구조를 잡았으니 남은 것은 무한 루프 안에서 조건식이 거짓이 아닐 때까지 본문을 반복 실행하도록 하는 것이다.
+
+조건은 본문을 실행하기 전마다 평가되므로 먼저 조건식 노드를 순회해 결과가 거짓이라면 무한 루프를 탈출하도록 하고, 아니라면 본문의 문 노드들을 순회해 실행한다. 그리고 for문의 증감식은 본문의 실행이 끝났을 때마다 평가되므로 본문의 실행이 끝나면 증감식 노드를 순회한다.
+```cpp
+any result = condition->interpret();
+if(isFalse(result)) {
+  break;
+}
+for(Statement* node: block) {
+  node->interpret();
+}
+expression->interpret();
+```
+
+```cpp
+func main() {
+  for(var i = 0; i < 5; ++i) {
+    printLine(i);
+  }
+}
+```
+
+![alt text](./images/10.png)
+
+> ++i 를 구현하기 위해 Node.h, Parser.cpp, Interpreter.cpp 를 조금 수정하였다.
+```cpp
+// Node.h
+struct Unary : Expression {
+  Kind kind;
+  string name; // 추가한 부분
+  Expression* sub;
+  auto interpret() -> any;
+};
+
+// Parser.cpp
+static auto parseUnary() -> Expression* {
+  set<Kind> operators1 = { Kind::Add, Kind::Subtract };
+  set<Kind> operators2 = { Kind::Increase, Kind::Decrease };
+  if (operators1.count(current->kind)) {
+    Unary* result = new Unary();
+    result->kind = current->kind;
+    skipCurrent();
+    result->sub = parseOperand();
+    return result;
+  }
+  else if (operators2.count(current->kind)) { // 추가한 부분
+    Unary* result = new Unary();
+    result->kind = current->kind;
+    skipCurrent();
+    result->name = current->str;
+    skipCurrent(Kind::Identifier);
+    return result;
+  }
+  return parseOperand();
+}
+
+// interpreter.cpp
+auto Unary::interpret() -> any {
+  set<Kind> operators1 = { Kind::Add, Kind::Subtract };
+  set<Kind> operators2 = { Kind::Increase, Kind::Decrease };
+
+  if (operators1.count(kind)) {
+
+  }
+  else { // 추가한 부분
+    if (kind == Kind::Increase) {
+      for (map<string, any>& variables : local.back()) {
+        if (variables.count(name)) {
+          return variables[name] = toNumber(variables[name]) + 1;
+        }
+      }
+      if(global.count(name)) {
+        return global[name] = toNumber(global[name]) + 1;
+      }
+      cout << name << " does not exist." << endl;
+      exit(1);
+    }
+    if (kind == Kind::Decrease) {
+      for (map<string, any>& variables : local.back()) {
+        if (variables.count(name)) {
+          return variables[name] = toNumber(variables[name]) - 1;
+        }
+      }
+      if(global.count(name)) {
+        return global[name] = toNumber(global[name]) - 1;
+      }
+      cout << name << " does not exist." << endl;
+      exit(1);
+    }
+  }
+}
+```
+
+기존 Unary 노드에 string name 을 추가하여, ++ 또는 --이 온 경우에는 뒤에 따라오는 Identifier의 이름을 name에 저장하여 노드로 만들었다.
+
+이후 Unary 노드의 interpret() 함수를 수행하면서, 만약 kind가 Increase 또는 Decrease 이라면, 해당 변수의 값을 1 늘리거나 줄여주고 그 값을 반환하도록 하였다.

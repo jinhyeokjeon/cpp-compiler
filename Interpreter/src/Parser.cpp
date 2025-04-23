@@ -52,6 +52,10 @@ auto parse(vector<Token>& tokens) -> Program* {
       result->functions.push_back(parseFunction());
       break;
     }
+    case Kind::Variable: {
+      result->variables.push_back(parseVariable());
+      break;
+    }
     default: {
       cout << *current << " is wrong." << endl;
       exit(1);
@@ -276,12 +280,21 @@ static auto parseArithmetic2() -> Expression* {
   return result;
 }
 static auto parseUnary() -> Expression* {
-  set<Kind> operators = { Kind::Add, Kind::Subtract, Kind::Increase, Kind::Decrease };
-  if (operators.count(current->kind)) {
+  set<Kind> operators1 = { Kind::Add, Kind::Subtract };
+  set<Kind> operators2 = { Kind::Increase, Kind::Decrease };
+  if (operators1.count(current->kind)) {
     Unary* result = new Unary();
     result->kind = current->kind;
     skipCurrent();
     result->sub = parseOperand();
+    return result;
+  }
+  else if (operators2.count(current->kind)) {
+    Unary* result = new Unary();
+    result->kind = current->kind;
+    skipCurrent();
+    result->name = current->str;
+    skipCurrent(Kind::Identifier);
     return result;
   }
   return parseOperand();

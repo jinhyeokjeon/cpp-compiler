@@ -18,6 +18,7 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $@ $(CXXFLAGS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+	mkdir -p $(SRC_DIR) $(OBJ_DIR)
 	$(CC) -c $< -o $@ -MD $(CXXFLAGS)
 
 .PHONY: clean all
