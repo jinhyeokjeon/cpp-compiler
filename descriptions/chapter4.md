@@ -156,3 +156,58 @@ func main() {
 > 리눅스에서는 파일 복사시 수정시간 갱신하는데 윈도우에서는 수정시간 유지된다.
 > 그래서 make 가 새롭게 빌드 안해준다 !!! 주의.
 
+## 4.2.6 산술 연산
+
+산술 연산자 노드는 왼쪽 식 노드와 오른쪽 식 노드를 멤버로 가진다. 연산을 하기 위해 양쪽 식 노드를 순회해서 두 피연산자의 값을 구한다.
+```cpp
+auto Arithmetic::interpret() -> any {
+  any lValue = lhs->interpret();
+  any rValue = rhs->interpret();
+}
+```
+
+두 피연산자의 값을 구한 후에 할 일은 연산의 결과값을 반환하는 것이다. 연산자의 종류와 두 피연산자의 데이터 타입에 따라 연산을 하고 결과값을 반환한다. 예를 들어 연산자가 덧셈이고 두 피연산자의 데이터 타입이 숫자인 경우에는 덧셈을 해서 결과값을 반환한다.
+
+마찬가지로 연산자가 덧셈이고 두 피연산자의 데이터 타입이 문자열이라면 다음과 같이 문자열 덧셈을 한다.
+```cpp
+if (kind == Kind::Add && isNumber(lValue) && isNumber(rValue)) {
+  return toNumber(lValue) + toNumber(rValue);
+}
+if (kind == Kind::Add && isString(lValue) && isString(rValue)) {
+  return toString(lValue) + toString(rValue);
+}
+```
+
+![alt text](./images/6.png)
+
+## 4.2.7 논리 연산
+
+논리 연산자는 산술 연산자와 마찬가지로 두 개의 피연산자를 가지지만, 단락 평가가 되도록 interpret() 함수의 내용을 작성해야 한다.
+
+다음 코드는 or 연산자 노드의 interpret() 함수이다.
+```cpp
+auto Or::interpret() -> any {
+  return isTrue(lhs->interpret()) ? true : rhs->interpret();
+}
+```
+
+다음 코드는 and 연산자 노드의 interpret() 함수이다.
+```cpp
+auto And::interpret() -> any {
+  return isFalse(lhs->interpret()) ? false : rhs->interpret();
+}
+```
+
+```cpp
+func main() {
+  printLine("Hello World!");
+  print("1 + 2 = ");
+  printLine(1 + 2);
+  printLine(true or "Hello World!");
+  printLine(false or "Hello World!");
+  printLine(true and "Hello World!");
+  printLine(false and "Hello World!");
+}
+```
+
+![alt text](./images/7.png)

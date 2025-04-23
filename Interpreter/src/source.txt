@@ -1,8 +1,9 @@
 func main() {
   printLine("Hello World!");
-  // printLine("Hi");
-  /*
-  printLine("Hi");
-  printLine("Hi");
-  */
+  print("1 + 2 = ");
+  printLine(1 + 2);
+  printLine(true or "Hello World!");
+  printLine(false or "Hello World!");
+  printLine(true and "Hello World!");
+  printLine(false and "Hello World!");
 }

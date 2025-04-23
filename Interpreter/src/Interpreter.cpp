@@ -58,16 +58,39 @@ auto ExpressionStatement::interpret() -> void {
 }
 
 auto Or::interpret() -> any {
-
+  return isTrue(lhs->interpret()) ? true : rhs->interpret();
 }
 auto And::interpret() -> any {
-
+  return isFalse(lhs->interpret()) ? false : rhs->interpret();
 }
 auto Relational::interpret() -> any {
 
 }
 auto Arithmetic::interpret() -> any {
+  any lValue = lhs->interpret();
+  any rValue = rhs->interpret();
+  if (isNumber(lValue) && isNumber(rValue)) {
+    switch (kind) {
+    case Kind::Add:       return toNumber(lValue) + toNumber(rValue);
+    case Kind::Subtract:  return toNumber(lValue) - toNumber(rValue);
+    case Kind::Multiply:  return toNumber(lValue) * toNumber(rValue);
+    case Kind::Divide:    if (toNumber(rValue) != 0) return toNumber(lValue) / toNumber(rValue); break;
+    case Kind::Modulo:    if (toNumber(rValue) != 0) return fmod(toNumber(lValue), toNumber(rValue)); break;
+    }
+  }
+  else if (isString(lValue) && isString(rValue) && kind == Kind::Add) {
+    return toString(lValue) + toString(rValue);
+  }
+  else if (isString(lValue) && isNumber(rValue) && kind == Kind::Multiply) {
+    string result = "";
+    for (int i = 0; i < (int)toNumber(rValue); ++i) {
+      result += toString(lValue);
+    }
+    return result;
+  }
 
+  cout << lValue << " " << toString(kind) << " " << rValue << " is not possible." << endl;
+  exit(1);
 }
 auto Unary::interpret() -> any {
 
@@ -88,13 +111,13 @@ auto SetVariable::interpret() -> any {
 
 }
 auto NullLiteral::interpret() -> any {
-
+  return nullptr;
 }
 auto BooleanLiteral::interpret() -> any {
-
+  return value;
 }
 auto NumberLiteral::interpret() -> any {
-
+  return value;
 }
 auto StringLiteral::interpret() -> any {
   return value;
