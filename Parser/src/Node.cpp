@@ -6,11 +6,6 @@ using std::endl;
 
 static auto indent(int) -> void;
 
-auto printSyntaxTree(Program* program) -> void {
-  for (auto& node : program->functions)
-    node->print(0);
-}
-
 auto Function::print(int depth)->void {
   indent(depth); cout << "FUNCTION " << name << ": " << endl;
   if (parameters.size()) {

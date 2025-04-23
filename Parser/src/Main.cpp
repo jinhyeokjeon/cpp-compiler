@@ -1,18 +1,22 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include "Main.h"
 using namespace std;
 
 auto main() -> int {
-  string sourceCode = R"""(
-    func main() {
-      printLine("Hello, World!"); // print Hello, World
-      printLine(1 + 2 * 3); // arithmetic calculation
-      var _num_ = 3;
-    }
-  )""";
-  vector<Token> tokenList = scan(sourceCode);
-  Program* syntaxTree = parse(tokenList);
+  ifstream file("./src/source.txt");
+  if (!file) { return 1; }
 
+  stringstream buffer;
+  buffer << file.rdbuf();
+  string sourceCode = buffer.str();
+
+  vector<Token> tokenList = scan(sourceCode);
+  printTokenList(tokenList);
+  cout << endl;
+
+  Program* syntaxTree = parse(tokenList);
   printSyntaxTree(syntaxTree);
 }

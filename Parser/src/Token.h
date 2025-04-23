@@ -18,6 +18,7 @@ enum class Kind {
   Print, PrintLine,
 
   Comment,
+  Increase, Decrease,
 
   LogicalAnd, LogicalOr,
   Assignment,

@@ -1,0 +1,7 @@
+func main() {
+  printLine("Hello, World!"); // print Hello, World
+  printLine(1 + 2 * 3); // arithmetic calculation
+  for(var i = 1; i < 3; ++i) {
+    printLine("Hello World!");
+  }
+}
