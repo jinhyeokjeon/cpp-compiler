@@ -1,14 +1,12 @@
 func main() {
-  sayHoHoHo(3);
-  add(5.2, 8.3);
-}
+  var array = ["first", "second", "third"];
+  printLine(array);
+  array[1] = "2nd";
+  printLine(array);
 
-func sayHoHoHo(var num) {
-  for(var i = 0; i < num; ++i) {
-    printLine("Ho! Ho! Ho!");
-  }
-}
-
-func add(var a, var b) {
-  printLine(a + b);
+  var map = {"first": 1, "second": ["this", "is", "second"]};
+  printLine(map);
+  map["third"] = [3, 3, 3];
+  map["second"][1] = "IS";
+  printLine(map);
 }

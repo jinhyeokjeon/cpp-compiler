@@ -27,21 +27,66 @@ auto isNumber(any& value) -> bool {
 auto toNumber(any& value) -> double {
   return any_cast<double>(value);
 }
-auto isArray(any& value) -> bool;
-auto toArray(any value) -> Array*;
-auto isMap(any& value) -> bool;
-auto toMap(any& value) -> Map*;
-auto isFunction(any& value) -> bool;
-auto toFunction(any& value) -> Function*;
-auto isBuiltinFunction(any& value) -> bool;
-auto getValueOfArray(any object, any index) -> any;
-auto setValueOfArray(any object, any index, any value) -> any;
-auto getValueOfMap(any object, any key) -> any;
-auto setValueOfMap(any object, any key, any value) -> any;
-auto toBuiltinFunction(any& value) -> function<any(vector<any>)>;
+auto isArray(any& value) -> bool {
+  return value.type() == typeid(Array*);
+}
+auto toArray(any value) -> Array* {
+  return any_cast<Array*>(value);
+}
+auto isMap(any& value) -> bool {
+  return value.type() == typeid(Map*);
+}
+auto toMap(any& value) -> Map* {
+  return any_cast<Map*>(value);
+}
+auto getValueOfArray(any object, any index) -> any {
+  size_t i = static_cast<size_t>(toNumber(index));
+  if (i < 0 || i >= toArray(object)->values.size()) {
+    cout << "Index error" << endl;
+    exit(1);
+  }
+  return toArray(object)->values[i];
+}
+auto setValueOfArray(any object, any index, any value) -> any {
+  size_t i = static_cast<size_t>(toNumber(index));
+  if (i < 0 || i >= toArray(object)->values.size()) {
+    cout << "Index error" << endl;
+    exit(1);
+  }
+  return toArray(object)->values[i] = value;
+}
+auto getValueOfMap(any object, any key) -> any {
+  if (toMap(object)->values.count(toString(key))) {
+    return toMap(object)->values[toString(key)];
+  }
+  cout << "Index error." << endl;
+  exit(1);
+}
+auto setValueOfMap(any object, any key, any value) -> any {
+  toMap(object)->values[toString(key)] = value;
+  return value;
+}
 auto operator<<(std::ostream& stream, any& value) -> std::ostream& {
   if (isString(value)) stream << toString(value);
   else if (isNumber(value)) stream << toNumber(value);
   else if (isBoolean(value)) stream << (isTrue(value) ? "true" : "false");
+  else if (isNull(value)) stream << "null";
+  else if (isArray(value)) {
+    stream << "[ ";
+    for (auto& value : toArray(value)->values)
+      stream << value << " ";
+    stream << "]";
+  }
+  else if (isMap(value)) {
+    stream << "{ ";
+    map<string, any>& m = toMap(value)->values;
+    int i = 0;
+    for (auto it = m.begin(); it != m.end(); ++it, ++i) {
+      stream << it->first << ": " << it->second;
+      if (i < m.size() - 1) stream << ", ";
+      else stream << " ";
+    }
+    stream << "}";
+  }
   return stream;
 }

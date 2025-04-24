@@ -136,6 +136,7 @@ auto Relational::interpret() -> any {
     case Kind::GreaterOrEqual: return l >= r;
     case Kind::Equal:          return l == r;
     case Kind::NotEqual:       return l != r;
+    default:                   break;
     }
   }
   else if (isBoolean(lValue) && isBoolean(rValue)) {
@@ -143,6 +144,7 @@ auto Relational::interpret() -> any {
     switch (kind) {
     case Kind::Equal:    return l == r;
     case Kind::NotEqual: return l != r;
+    default:             break;
     }
   }
   cout << lValue << " " << toString(kind) << " " << rValue << " is impossible" << endl;
@@ -158,6 +160,7 @@ auto Arithmetic::interpret() -> any {
     case Kind::Multiply:  return toNumber(lValue) * toNumber(rValue);
     case Kind::Divide:    if (toNumber(rValue) != 0) return toNumber(lValue) / toNumber(rValue); break;
     case Kind::Modulo:    if (toNumber(rValue) != 0) return fmod(toNumber(lValue), toNumber(rValue)); break;
+    default:              break;
     }
   }
   else if (isString(lValue) && isString(rValue) && kind == Kind::Add) {
@@ -217,6 +220,8 @@ auto Unary::interpret() -> any {
       exit(1);
     }
   }
+
+  return nullptr;
 }
 auto Call::interpret() -> any {
   if (functionTable.count(name)) {
@@ -233,7 +238,7 @@ auto Call::interpret() -> any {
     // local.emplace_back().emplace_front();
     local.emplace_back().push_front(parameters);
     try {
-      functionTable[name]->interpret();
+      func->interpret();
     }
     catch (ReturnException& exception) {
       local.pop_back();
@@ -242,12 +247,44 @@ auto Call::interpret() -> any {
     local.pop_back();
     return nullptr;
   }
+  if (builtinFunctionTable.count(name)) {
+    vector<any> values;
+    for (Expression* arg : arguments) {
+      values.push_back(arg->interpret());
+    }
+    return builtinFunctionTable[name](values);
+  }
+  cout << "Function " << name << " does not exist." << endl;
+  exit(1);
 }
 auto GetElement::interpret() -> any {
+  any object = sub->interpret();
+  any idx = index->interpret();
 
+  if (isArray(object) && isNumber(idx)) {
+    return getValueOfArray(object, idx);
+  }
+  if (isMap(object) && isString(idx)) {
+    return getValueOfMap(object, idx);
+  }
+
+  cout << "Element reference error" << endl;
+  exit(1);
 }
 auto SetElement::interpret() -> any {
+  any object = sub->interpret();
+  any idx = index->interpret();
+  any val = value->interpret();
 
+  if (isArray(object) && isNumber(idx)) {
+    return setValueOfArray(object, idx, val);
+  }
+  if (isMap(object) && isString(idx)) {
+    return setValueOfMap(object, idx, val);
+  }
+
+  cout << "Element reference error" << endl;
+  exit(1);
 }
 auto GetVariable::interpret() -> any {
   for (map<string, any>& variables : local.back()) {
@@ -291,8 +328,16 @@ auto StringLiteral::interpret() -> any {
   return value;
 }
 auto ArrayLiteral::interpret() -> any {
-
+  Array* result = new Array();
+  for (Expression* node : values) {
+    result->values.push_back(node->interpret());
+  }
+  return result;
 }
 auto MapLiteral::interpret() -> any {
-
+  Map* result = new Map();
+  for (auto& [key, value] : values) {
+    result->values[key] = value->interpret();
+  }
+  return result;
 }

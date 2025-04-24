@@ -795,7 +795,7 @@ if (functionTable.count(name)) {
     // local.emplace_back().emplace_front();
     local.emplace_back().push_front(parameters);
     try {
-      functionTable[name]->interpret();
+      func->interpret();
     }
     catch (ReturnException& exception) {
       local.pop_back();
@@ -805,3 +805,280 @@ if (functionTable.count(name)) {
     return nullptr;
   }
 ```
+
+다음은 함수의 return 테스트이다.
+```cpp
+func main() {
+  printLine(sayHoHoHo(3));
+  printLine(add(5, 8));
+}
+
+func sayHoHoHo(var num) {
+  for(var i = 0; i < num; ++i) {
+    printLine("Ho! Ho! Ho!");
+  }
+}
+
+func add(var a, var b) {
+  return a + b;
+}
+```
+
+![alt text](./images/15.png)
+
+## 4.2.15 내장 함수
+
+사용자 정의 함수들을 관리하는 functionTable 전역 변수처럼 내장 함수들을 관리할 전역 변수를 선언한다. 다른 cpp 파일에 존재하므로 extern 키워드를 사용한다.
+
+```cpp
+extern map<string, function<any(vector<any>)>> builtinFunctionTable;
+```
+
+> function<ReturnType(Args...)> 은 함수를 담는 객체이다. 함수 포인터보다 더 유연하게 함수(또는 람다, 함수 객체 등)를 저장하고 호출할 수 있게 해준다.
+>
+> 이 타입은 아래와 같은 함수들을 담을 수 있다.
+```cpp
+any myFunc(vector<any> args) {
+    ...
+    return something;
+}
+```
+
+이어서 내장 함수들의 구현을 작성할 BuiltinFunctionTable.cpp 파일을 생성하고, Interpreter.cpp 파일에서 참조하는 builtinFunctionTable 전역 변수를 선언한다. 전역 변수 builtinFunctionTable은 내장 함수의 이름과 내장 함수의 식을 키와 값으로 한다.
+
+다음 코드는 sqrt라는 이름으로 함수 식을 등록한 것이다.
+```cpp
+map<string, function<any(vector<any>)>> builtinFunctionTable = {
+  {"sqrt", [](vector<any> values)->any {
+    return sqrt(toNumber(values[0]));
+  }}
+};
+```
+
+지금부터는 사용자 정의 함수의 호출을 구현했던 방식과 동일하다.
+```cpp
+// Call::interpret();
+if (builtinFunctionTable.count(name)) {
+  vector<any> values;
+  for (Expression* arg : arguments) {
+    values.push_back(arg->interpret());
+  }
+  return builtinFunctionTable[name](values);
+}
+```
+
+이제 내장 함수를 호출할 수 있다. 등록한 sqrt() 내장 함수를 사용해 빗변의 길이를 구해보자.
+```cpp
+func main() {
+  printLine(sqrt(getC(3, 4)));
+}
+
+func getC(var a, var b) {
+  return a * a + b * b;
+}
+```
+![alt text](./images/16.png)
+
+## 4.2.16 배열 리터럴
+
+유랭은 내장 자료 구조로서 배열과 맵을 지원한다. 배열을 사용할 수 있도록 하기 위해 가장 먼저 해야 할 것은 배열 리터럴의 처리이다. 문자열 리터럴 노드의 interpret() 함수에서 C++의 배열을 반환하도록 한다.
+```cpp
+struct Object {
+  bool isMarked = false;
+  virtual ~Object() = default; //  typeid를 활용하여 파생 클래스의 타입 정보를 얻기 위해서 사용
+};
+struct Array : Object {
+  vector<any> values;
+};
+struct Map : Object {
+  map<string, any> values;
+};
+
+auto ArrayLiteral::interpret() -> any {
+  Array* result = new Array();
+    for (Expression* node : values) {
+      result->values.push_back(node->interpret());
+    }
+  return result;
+}
+```
+위 코드에서는 배열을 메모리의 힙 영역에 생성해 함수의 인자로 넘기거나 함수의 반환값으로 사용할 때 복사가 되지 않도록 하였다.
+
+struct Array와 struct Map 은 struct Object 를 상속받는데, 이는 6장에서 가상머신에서 구현하는 마크 앤 스윕이라는 가비지 컬렉션을 고려해 이렇게 만든 것이다.
+
+또한 virtual ~Object() = default(); 를 쓴 이유는 typeid를 사용하기 위해서이다. Object* obj = new Array() 를 생각해보자. 만약 Object에 가상함수가 없으면, typeid(*obj)는 Object 타입만 보게 된다. 하지만 Object에 하나라도 가상함수가 있다면, typeid()는 실제 객체 타입을 찾는다. 
+
+따라서 가상 소멸자를 넣어주는 것이다. default 키워드는 기본 소멸자를 컴파일러가 자동으로 만들어 달라는 키워드이다.
+
+배열 리터럴을 처리했으니 배열이 콘솔에 잘 출력되는지 확인하자. 
+물론 ```auto operator<<(std::ostream& stream, any& value) -> std::ostream&``` 에 정의해야한다.
+```cpp
+else if (isArray(value)) {
+  stream << "[ ";
+  for (auto& value : toArray(value)->values)
+    stream << value << " ";
+  stream << "]";
+}
+```
+Array의 value에 Array가 있는 경우에는 재귀적으로 출력된다.
+
+다음은 Array 출력 테스트이다.
+
+```cpp
+else if (isArray(value)) {
+  stream << "[ ";
+  for (auto& value : toArray(value)->values)
+    stream << value << " ";
+  stream << "]";
+}
+```
+![alt text](./images/17.png)
+
+Map도 비슷하게 구현 가능하다.
+```cpp
+auto MapLiteral::interpret() -> any {
+  Map* result = new Map();
+  for (auto& [key, value] : values) {
+    result->values[key] = value->interpret();
+  }
+  return result;
+}
+
+else if (isMap(value)) {
+  stream << "{ ";
+  map<string, any>& m = toMap(value)->values;
+  int i = 0;
+  for (auto it = m.begin(); it != m.end(); ++it, ++i) {
+    stream << it->first << ": " << it->second;
+    if (i < m.size() - 1) stream << ", ";
+    else stream << " ";
+  }
+  stream << "}";
+}
+```
+
+## 4.2.17 원소값 참조
+
+배열의 원소값을 참조할 수 있도록 구현해보자. 원소값의 참조를 표현하는 노드는 피연산자 식 노드와 인덱스 식 노드를 가진다. 피연산자 식 노드의 결과값은 배열이고 인덱스 식 노드의 결과값은 인덱스로 사용할 정수이므로 배열에서 해당 인덱스에 있는 값을 반환하면 된다.
+```cpp
+auto GetElement::interpret() -> any {
+  any object = sub->interpret();
+  any idx = index->interpret();
+  if (isArray(object) && isNumber(idx)) {
+    return getValueOfArray(object, idx);
+  }
+}
+```
+
+getValueOfArray() 함수는 Datatype.cpp 파일에 정의한다.
+```cpp
+auto getValueOfArray(any object, any index) -> any {
+  size_t i = static_cast<size_t>(toNumber(index));
+  if (i < 0 || i >= toArray(object)->values.size()) {
+    cout << "Index error" << endl;
+    exit(1);
+  }
+  return toArray(object)->values[i];
+}
+```
+
+다음은 Array 원소값 참조 테스트이다.
+```cpp
+func main() {
+  var arr = [1, 2, [3, 4]];
+  printLine(arr[2]);
+  printLine(arr[2][1]);
+  printLine(["first", "second", "third"][1]);
+}
+```
+![alt text](./images/18.png)
+
+## 4.2.18 원소값 변경
+
+Map 원소값 참조도 유사하게 구현 가능하다.
+```cpp
+auto getValueOfMap(any object, any key) -> any {
+  if (toMap(object)->values.count(toString(key))) {
+    return toMap(object)->values[toString(key)];
+  }
+  cout << "Index error." << endl;
+  exit(1);
+}
+
+auto GetElement::interpret() -> any {
+  any object = sub->interpret();
+  any idx = index->interpret();
+  if (isArray(object) && isNumber(idx)) {
+    return getValueOfArray(object, idx);
+  }
+  if (isMap(object) && isString(idx)) {
+    return getValueOfMap(object, idx);
+  }
+  cout << "Element reference error" << endl;
+  exit(1);
+}
+```
+
+다음은 Map 원소값 참조 테스트이다.
+```cpp
+func main() {
+  var map = {"first": [1, 2, 3], "second": "2"};
+  printLine(map);
+  printLine(map["first"]);
+  printLine(map["first"][2]);
+  printLine(map["second"]);
+}
+```
+![alt text](./images/19.png)
+
+## 4.2.18 원소값 변경
+
+배열과 맵의 원소값을 변경할 수 있게 구현하자.
+```cpp
+auto SetElement::interpret() -> any {
+  any object = sub->interpret();
+  any idx = index->interpret();
+  any val = value->interpret();
+
+  if (isArray(object) && isNumber(idx)) {
+    return setValueOfArray(object, idx, val);
+  }
+  if (isMap(object) && isString(idx)) {
+    return setValueOfMap(object, idx, val);
+  }
+
+  cout << "Element reference error" << endl;
+  exit(1);
+}
+
+auto setValueOfArray(any object, any index, any value) -> any {
+  size_t i = static_cast<size_t>(toNumber(index));
+  if (i < 0 || i >= toArray(object)->values.size()) {
+    cout << "Index error" << endl;
+    exit(1);
+  }
+  return toArray(object)->values[i] = value;
+}
+
+auto setValueOfMap(any object, any key, any value) -> any {
+  toMap(object)->values[toString(key)] = value;
+  return value;
+}
+```
+
+다음은 배열과 맵의 원소값을 변경하는 테스트이다.
+```cpp
+func main() {
+  var array = ["first", "second", "third"];
+  printLine(array);
+  array[1] = "2nd";
+  printLine(array);
+
+  var map = {"first": 1, "second": ["this", "is", "second"]};
+  printLine(map);
+  map["third"] = [3, 3, 3];
+  map["second"][1] = "IS";
+  printLine(map);
+}
+```
+![alt text](./images/20.png)

@@ -12,24 +12,25 @@ using std::string;
 using std::vector;
 using std::function;
 
-map<string, function<any(vector<any>)>> builtinFunctionTable;
-/*
 map<string, function<any(vector<any>)>> builtinFunctionTable = {
-  {"length", [](vector<any> values)->any {
+  { "sqrt", [](vector<any> values)->any {
+    return sqrt(toNumber(values[0]));
+  }},
+  { "length", [](vector<any> values)->any {
     if (values.size() == 1 && isArray(values[0]))
       return static_cast<double>(toArray(values[0])->values.size());
     if (values.size() == 1 && isMap(values[0]))
       return static_cast<double>(toMap(values[0])->values.size());
     return 0.0;
   }},
-  {"push", [](vector<any> values)->any {
+  { "push", [](vector<any> values)->any {
     if (values.size() == 2 && isArray(values[0])) {
       toArray(values[0])->values.push_back(values[1]);
       return values[0];
     }
     return nullptr;
   }},
-  {"pop", [](vector<any> values)->any {
+  { "pop", [](vector<any> values)->any {
     if (values.size() == 1 && isArray(values[0]) && toArray(values[0])->values.size() != 0) {
       auto result = toArray(values[0])->values.back();
       toArray(values[0])->values.pop_back();
@@ -51,6 +52,5 @@ map<string, function<any(vector<any>)>> builtinFunctionTable = {
   }},
   {"sqrt", [](vector<any> values)->any {
     return sqrt(toNumber(values[0]));
-  }},
+  }}
 };
-*/
