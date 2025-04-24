@@ -32,7 +32,11 @@ auto isNumber(any& value) -> bool {
   return value.type() == typeid(double);
 }
 auto toNumber(any& value) -> double {
-  return any_cast<double>(value);
+  if (isNumber(value)) {
+    return any_cast<double>(value);
+  }
+  cout << value << " is not a number" << endl;
+  exit(1);
 }
 auto isArray(any& value) -> bool {
   return value.type() == typeid(Array*);

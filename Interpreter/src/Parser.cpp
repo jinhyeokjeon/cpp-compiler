@@ -302,18 +302,17 @@ static auto parseUnary() -> Expression* {
 static auto parseOperand() -> Expression* {
   Expression* result;
   switch (current->kind) {
-  case Kind::NullLiteral:   result = parseNullLiteral();     break;
+  case Kind::NullLiteral:   return parseNullLiteral();
   case Kind::TrueLiteral:
-  case Kind::FalseLiteral:  result = parseBooleanLiteral();  break;
-  case Kind::NumberLiteral: result = parseNumberLiteral();   break;
-  case Kind::StringLiteral: result = parseStringLiteral();   break;
-  case Kind::LeftBracket:   result = parseListLiteral();     break;
-  case Kind::LeftBrace:     result = parseMapLiteral();      break;
-  case Kind::Identifier:    result = parseIdentifier();      break;
-  case Kind::LeftParen:     result = parseInnerExpression(); break;
+  case Kind::FalseLiteral:  return parseBooleanLiteral();
+  case Kind::NumberLiteral: return parseNumberLiteral();
+  case Kind::StringLiteral: return parseStringLiteral();
+  case Kind::LeftParen:     return parseInnerExpression();
+  case Kind::LeftBracket:   return parsePostfix(parseListLiteral());
+  case Kind::LeftBrace:     return parsePostfix(parseMapLiteral());
+  case Kind::Identifier:    return parsePostfix(parseIdentifier());
   default:                  cout << "wrong expression." << endl; exit(1);
   }
-  return parsePostfix(result);
 }
 static auto parseNullLiteral() -> Expression* {
   skipCurrent(Kind::NullLiteral);
