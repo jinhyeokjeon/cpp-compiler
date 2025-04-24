@@ -1,12 +1,5 @@
 func main() {
-  var array = ["first", "second", "third"];
-  printLine(array);
-  array[1] = "2nd";
-  printLine(array);
-
-  var map = {"first": 1, "second": ["this", "is", "second"]};
-  printLine(map);
-  map["third"] = [3, 3, 3];
-  map["second"][1] = "IS";
-  printLine(map);
+  printLine(10 and 0);
+  printLine(0 or 3);
+  printLine(2 and 5);
 }

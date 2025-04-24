@@ -119,10 +119,14 @@ auto ExpressionStatement::interpret() -> void {
 }
 
 auto Or::interpret() -> any {
-  return isTrue(lhs->interpret()) ? true : rhs->interpret();
+  any l = lhs->interpret();
+  any r = rhs->interpret();
+  return isTrue(l) ? true : toBoolean(r);
 }
 auto And::interpret() -> any {
-  return isFalse(lhs->interpret()) ? false : rhs->interpret();
+  any l = lhs->interpret();
+  any r = rhs->interpret();
+  return isFalse(l) ? false : toBoolean(r);
 }
 auto Relational::interpret() -> any {
   any lValue = lhs->interpret();

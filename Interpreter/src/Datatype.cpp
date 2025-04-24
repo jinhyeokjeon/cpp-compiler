@@ -4,10 +4,10 @@ auto isNull(any& value) -> bool {
   return value.type() == typeid(nullptr_t);
 }
 auto isTrue(any value) -> bool {
-  return isBoolean(value) && toBoolean(value);
+  return toBoolean(value) == true;
 }
 auto isFalse(any value) -> bool {
-  return isBoolean(value) && !toBoolean(value);
+  return toBoolean(value) == false;
 }
 auto isString(any& value) -> bool {
   return value.type() == typeid(string);
@@ -19,7 +19,14 @@ auto isBoolean(any& value) -> bool {
   return value.type() == typeid(bool);
 }
 auto toBoolean(any& value) -> bool {
-  return any_cast<bool>(value);
+  if (isBoolean(value)) {
+    return any_cast<bool>(value);
+  }
+  else if (isNumber(value)) {
+    return bool(toNumber(value));
+  }
+  cout << value << " cannot be converted to boolean." << endl;
+  exit(1);
 }
 auto isNumber(any& value) -> bool {
   return value.type() == typeid(double);

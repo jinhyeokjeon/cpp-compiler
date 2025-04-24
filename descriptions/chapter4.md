@@ -1082,3 +1082,54 @@ func main() {
 }
 ```
 ![alt text](./images/20.png)
+
+> true and "Hello World" 이렇게 and 또는 or 양옆에 boolean 또는 Number 가 아닌 다른 노드가 오는 경우 에러처리 하였다.
+> 또 Number 가 and 또는 or 양 옆에 오는 경우 0은 false로, 0이 아닌 값은 true로 평가하도록 하였다.
+
+```cpp
+auto Or::interpret() -> any {
+  any l = lhs->interpret();
+  any r = rhs->interpret();
+  return isTrue(l) ? true : toBoolean(r);
+}
+auto And::interpret() -> any {
+  any l = lhs->interpret();
+  any r = rhs->interpret();
+  return isFalse(l) ? false : toBoolean(r);
+}
+
+auto isTrue(any value) -> bool {
+  return toBoolean(value) == true;
+}
+auto isFalse(any value) -> bool {
+  return toBoolean(value) == false;
+}
+
+auto toBoolean(any& value) -> bool {
+  if (isBoolean(value)) {
+    return any_cast<bool>(value);
+  }
+  else if (isNumber(value)) {
+    return bool(toNumber(value));
+  }
+  cout << value << " cannot be converted to boolean." << endl;
+  exit(1);
+}
+```
+
+다음은 테스트이다.
+```cpp
+func main() {
+  printLine(3 and "Hello");
+}
+```
+![alt text](./images/21.png)
+
+```cpp
+func main() {
+  printLine(10 and 0);
+  printLine(0 or 3);
+  printLine(2 and 5);
+}
+```
+![alt text](./images/22.png)
