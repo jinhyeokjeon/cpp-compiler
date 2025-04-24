@@ -1,5 +1,14 @@
 func main() {
-  for(var i = 0; i < 5; ++i) {
-    printLine(i);
+  sayHoHoHo(3);
+  add(5.2, 8.3);
+}
+
+func sayHoHoHo(var num) {
+  for(var i = 0; i < num; ++i) {
+    printLine("Ho! Ho! Ho!");
   }
+}
+
+func add(var a, var b) {
+  printLine(a + b);
 }

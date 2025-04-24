@@ -385,7 +385,12 @@ static auto parsePostfix(Expression* sub) -> Expression* {
 }
 static auto parseCall(Expression* sub) -> Expression* {
   Call* result = new Call();
-  result->sub = sub;
+  GetVariable* var = dynamic_cast<GetVariable*>(sub);
+  if (!var) {
+    cout << "Syntax error." << endl;
+    exit(1);
+  }
+  result->name = var->name;
   skipCurrent(Kind::LeftParen);
   if (current->kind != Kind::RightParen) {
     do result->arguments.push_back(parseExpression());

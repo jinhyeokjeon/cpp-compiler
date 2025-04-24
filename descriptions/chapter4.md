@@ -364,6 +364,14 @@ for문은 블럭과 제어 변수를 가지는데 제어 변수의 유효 범위
 
 이어서 for문은 반복문이므로, 본문을 반복해서 실행할 무한 루프를 작성하고, 본문의 실행이 끝나면 앞서 생성했던 문 블럭을 제거하도록 코드를 작성한다.
 ```cpp
+auto Variable::interpret() -> void {
+  if (functionTable.count(name)) {
+    cout << "Function name and local variable name are duplicated." << endl;
+    exit(1);
+  }
+  local.back().front()[name] = expression->interpret();
+}
+
 auto For::interpret() -> void {
   local.back().emplace_front();
   variable->interpret();
@@ -471,3 +479,329 @@ auto Unary::interpret() -> any {
 기존 Unary 노드에 string name 을 추가하여, ++ 또는 --이 온 경우에는 뒤에 따라오는 Identifier의 이름을 name에 저장하여 노드로 만들었다.
 
 이후 Unary 노드의 interpret() 함수를 수행하면서, 만약 kind가 Increase 또는 Decrease 이라면, 해당 변수의 값을 1 늘리거나 줄여주고 그 값을 반환하도록 하였다.
+
+## 4.2.10 if문
+
+이번에는 제어문 중 조건문인 if문이 동작하도록 한다. if문에는 if절과 elif절에 포함된 하나 이상의 조건식이 있으므로 다음과 같이 조건식의 개수만큼 루프를 도는 것을 시작한다.
+
+if문은 조건식의 결과가 참인 경우에 본문을 실행하므로 다음과 같이 조건식 노드를 순회해 결과가 거짓이면 본문을 실행하지 않도록 한다.
+```cpp
+auto If::interpret() -> void {
+  for (auto i = 0; i < conditions.size(); ++i) {
+    any result = conditions[i]->interpret();
+    if (isFalse(result)) {
+      continue;
+    }
+  }
+}
+```
+
+반대로 조건식의 결과가 참이라면 본문을 실행하도록 하는데, if문에 포한된 각각의 절은 문 블럭이므로 본문을 실행하기 전에 문 블럭을 생성하고, 블럭의 실행이 끝나면 생성했던 문 블럭을 제거한다.
+
+또한 본문을 실행한 후에는 다른 elif 절의 본문이 실행되지 않도록 if문의 실행을 종료하도록 한다.
+```cpp
+local.back().emplace_front();
+for (Statement* node: blocks[i]) {
+  node->interpret();
+}
+local.back().pop_front();
+return;
+```
+
+모든 조건식의 결과가 거짓일 때 else절이 있다면 els문의 본문을 실행하고, 없다면 종료한다.
+```cpp
+if(elseBlock.empty()) return;
+
+local.back().emplace_front();
+for (Statement* node: elseBlock) {
+  node->interpret();
+}
+local.back().pop_front();
+```
+
+아래는 Relational의 interpret() 함수 구현이다.
+```cpp
+auto Relational::interpret() -> any {
+  any lValue = lhs->interpret();
+  any rValue = rhs->interpret();
+  if (isNumber(lValue) && isNumber(rValue)) {
+    double l = toNumber(lValue), r = toNumber(rValue);
+    switch (kind) {
+    case Kind::LessThan:       return l < r;
+    case Kind::LessOrEqual:    return l <= r;
+    case Kind::GreaterThan:    return l > r;
+    case Kind::GreaterOrEqual: return l >= r;
+    case Kind::Equal:          return l == r;
+    case Kind::NotEqual:       return l != r;
+    }
+  }
+  else if (isBoolean(lValue) && isBoolean(rValue)) {
+    bool l = toBoolean(lValue), r = toBoolean(rValue);
+    switch (kind) {
+    case Kind::Equal:    return l == r;
+    case Kind::NotEqual: return l != r;
+    }
+  }
+  cout << lValue << " " << toString(kind) << " " << rValue << " is impossible" << endl;
+  exit(1);
+}
+```
+
+```cpp
+func main() {
+  for(var i = 0; i < 5; ++i) {
+    if(i == 1) {
+      printLine("One");
+    }
+    elif(i == 2) {
+      printLine("Two");
+    }
+    elif(i == 3) {
+      printLine("Three");
+    }
+    else {
+      printLine(i);
+    }
+  }
+}
+```
+아래는 if문의 테스트이다.
+
+![alt text](./images/11.png)
+
+## 4.2.11 continue문
+
+이번에는 for문에서 continue문이 동작하도록 한다. 실행 흐름을 제어하는 continue문의 실행은 콜 스택을 역행하도록 예외 처리를 사용하면 간단하게 구현할 수 있다.
+
+먼저 다음과 같이 예외 처리에 사용할 continue 예외 객체를 정의한다. continue문은 값을 전달하지 않으므로 멤버 변수는 없다.
+```cpp
+struct ContinueException {};
+```
+
+Continue 노드의 interpret() 함수에서는 continue 예외 객체를 던지기만 하면 된다.
+```cpp
+auto Continue::interpret() -> void {
+  throw ContinueException();
+}
+```
+
+for문에서의 continue 처리는, 본문의 문 리스트를 순회하는 코드를 다음과 같이 try문으로 감싸기만 하면 된다.
+```cpp
+try {
+  for (Statement* node: block) {
+    node->interpret();
+  }
+} catch (ContinueException&) {}
+```
+
+break문도 마찬가지로 break 예외 객체를 정의하고 break문을 표현하는 노드에서 예외를 던저 for문에서 받아 처리하면 된다.
+```cpp
+try {
+  for (Statement* node: block) {
+    node->interpret();
+  }
+}
+catch (ContinueException) {}
+catch (BreakException) { break; }
+```
+
+아래는 continue문과 break 문의 테스트이다.
+```cpp
+func main() {
+  for(var i = 0; i < 5; ++i) {
+    if(i == 0) {
+      printLine("Zero");
+    }
+    if(i == 1) {
+      continue;
+    }
+    elif(i == 2) {
+      printLine("Two");
+    }
+    elif(i == 3) {
+      break;
+    }
+    else {
+      printLine(i);
+    }
+  }
+}
+```
+![alt text](./images/12.png)
+
+## 4.2.12 함수 호출
+
+이제 값도 사용할 수 있고, 변수도 사용할 수 있고, 콘솔에 값이나 변수를 출력할 수도 있고, 반복문과 조건문도 사용할 수 있다. 프로그래밍 언어로서 필수적이고 기초적인 기능들을 사용할 수 있도록 했는데, 함수 역시 프로그램을 만들기 위해 꼭 필요한 기능이다.
+
+함수는 호출을 할 수 있고, 호출하면서 인자를 넘길 수도 있고, 결과값을 반환할 수도 있고, 프로그래밍 언어가 제공하는 내장 함수도 있다.
+
+함수와 관련된 기능들 중 첫 번째로 해야 할 것은 함수의 호출이다.
+
+함수를 호출하는 것은 식이고 함수의 이름으로 호출하므로, GetVariable 노드의 interpret() 함수에 식별자의 이름으로 전역 변수의 functionTable을 검색해서 같은 이름을 등록된 함수 노드를 찾아 반환하도록 한다.
+
+변수의 참조를 표현하는 노드에서 함수 노드를 반환하도록 했으니, 이제 해야 할 일은 반환받은 함수 노드를 호출하는 것이다. 함수의 호출을 표현하는 노드의 interpret() 함수에서 다음과 같은 코드를 추가한다.
+```cpp
+auto Call::interpret() -> any {
+  any value = sub->interpret();
+  if (!isFunction(value)) {
+    cout << "Syntax error" << endl;
+    exit(1);
+  }
+}
+```
+
+> 여기서는 Call 노드에서 함수의 이름을 GetVariable 노드로 저장하는데, 이 방식은 이상한것 같다. 나는 Call 노드에서 함수의 이름을 저장하는 string name 변수를 만들고, 파싱할 때 함수의 이름을 name에 저장하도록 고치겠다.
+
+아래는 Node.h 와 Parser.cpp 를 고친 내용이다.
+```cpp
+// Node.h
+struct Call : Expression {
+  // Expression* sub
+  string name;
+  vector<Expression*> arguments;
+  auto interpret() -> any;
+};
+
+// Parser.cpp
+static auto parseCall(Expression* sub) -> Expression* {
+  Call* result = new Call();
+  GetVariable* var = dynamic_cast<GetVariable*>(sub);
+  if (!var) {
+    cout << "Syntax error." << endl;
+    exit(1);
+  }
+  result->name = var->name;
+  skipCurrent(Kind::LeftParen);
+  if (current->kind != Kind::RightParen) {
+    do result->arguments.push_back(parseExpression());
+    while (skipCurrentIf(Kind::Comma));
+  }
+  skipCurrent(Kind::RightParen);
+  return result;
+}
+```
+
+이렇게 하면 책의 Call::interpret() 에서의 괴상한(?) 코드가 깔끔하게 바뀐다.
+```cpp
+// 책의 코드
+auto Call::interpret() -> any {
+  auto value = sub->interpret();
+  if (isFunction(value) == false) {
+    return nullptr;
+  }
+  ...
+}
+
+// 바뀐 코드
+auto Call::interpret() -> any {
+  if (functionTable.count(name)) {
+    local.emplace_back().emplace_front();
+    functionTable[name]->interpret();
+    local.pop_back();
+    return nullptr;
+  }
+  cout << "There is no function " << name << endl;
+  exit(1);
+}
+```
+
+함수는 함수 블럭을 가지므로 함수를 호출하기 전에 전역 변수 local에 함수 블럭을 생성하고, 호출이 끝나면 생성했던 함수 블럭을 제거해야 한다. 그리고 지금은 함수가 반환값을 반환하지 않으므로 임시로 널을 반환하도록 한다.
+
+아직 함수에 인자를 넘길 수도 없고, 함수에서 값을 반환할 수도 없지만 호출은 가능하다.
+
+아래는 함수 호출 테스트이다.
+```cpp
+func main() {
+  sayHoHoHo();
+}
+
+func sayHoHoHo() {
+  print("Ho! Ho! Ho!");
+}
+```
+
+![alt text](./images/13.png)
+
+## 4.2.13 함수 호출 인자
+
+이어서 인자와 함께 함수를 호출할 수 있도록 만들어보자. 인자와 함께 함수를 호출하기 위해서는 인자값들이 필요하다. 함수의 호출을 표현하는 노드에서 인자식 노드 리스트를 순회해 인자값들을 구하고, 매개 변수의 이름과 인자값을 매핑시켜 보관한다.
+
+이후 함수 블럭에 인자값들을 넣어놓고 함수를 호출하는 방법으로 구현한다.
+```cpp
+auto Call::interpret() -> any {
+  if (functionTable.count(name)) {
+    Function* func = functionTable[name];
+    map<string, any> parameters;
+    for (int i = 0; i < arguments.size(); ++i) {
+      string name = func->parameters[i];
+      parameters[name] = arguments[i]->interpret();
+    }
+    // local.emplace_back().emplace_front();
+    local.emplace_back().push_front(parameters);
+    functionTable[name]->interpret();
+    local.pop_back();
+    return nullptr;
+  }
+}
+```
+
+이제 함수 내에서 매개변수의 이름으로 인자값을 참조할 수 있다. 다음은 함수에 인자를 넘기는 테스트이다.
+```cpp
+func main() {
+  sayHoHoHo(3);
+  add(5.2, 8.3);
+}
+
+func sayHoHoHo(var num) {
+  for(var i = 0; i < num; ++i) {
+    printLine("Ho! Ho! Ho!");
+  }
+}
+
+func add(var a, var b) {
+  printLine(a + b);
+}
+```
+![alt text](./images/14.png)
+
+## 4.2.14 return 문
+
+이어서 함수가 값을 반환할 수 있도록 만들자. 지금 함수는 항상 널을 반환하는데, continue문을 구현했던 것과 동일한 방법으로 return문을 구현할 수 있다. 예외 처리를 사용할 것이므로 return 예외 객체를 정의하고, return문은 값이 있으므로 any 타입의 멤버 변수를 하나 갖는다.
+```cpp
+struct ReturnException {
+  any result;
+};
+
+auto Return::interpret() -> void {
+  throw ReturnException{ expression->interpret() };
+}
+```
+
+이제 함수의 호출을 표현하는 노드에서 return문 노드가 던진 return 예외를 받아 처리하면 된다.
+추가로 함수에 넘긴 인자 수와 매개변수 수가 일치하는지 확인하는 코드도 추가하였다.
+
+```cpp
+if (functionTable.count(name)) {
+    Function* func = functionTable[name];
+    map<string, any> parameters;
+    if (func->parameters.size() != arguments.size()) {
+      cout << "The number of arguments to the function is incorrect." << endl;
+      exit(1);
+    }
+    for (int i = 0; i < arguments.size(); ++i) {
+      string name = func->parameters[i];
+      parameters[name] = arguments[i]->interpret();
+    }
+    // local.emplace_back().emplace_front();
+    local.emplace_back().push_front(parameters);
+    try {
+      functionTable[name]->interpret();
+    }
+    catch (ReturnException& exception) {
+      local.pop_back();
+      return exception.result;
+    }
+    local.pop_back();
+    return nullptr;
+  }
+```

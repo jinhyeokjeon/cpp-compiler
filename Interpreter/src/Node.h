@@ -91,7 +91,7 @@ struct Unary : Expression {
   auto interpret() -> any;
 };
 struct Call : Expression {
-  Expression* sub;
+  string name;
   vector<Expression*> arguments;
   auto interpret() -> any;
 };
