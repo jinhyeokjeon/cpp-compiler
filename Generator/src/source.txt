@@ -1,5 +1,3 @@
 func main() {
-  printLine(10 and 0);
-  printLine(0 or 3);
-  printLine(2 and 5);
+  printLine(1 * 2 + 3 * 4);
 }

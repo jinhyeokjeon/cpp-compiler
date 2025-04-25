@@ -10,5 +10,5 @@ using namespace std;
 
 auto scan(string&) -> vector<Token>;
 auto parse(vector<Token>&) -> Program*;
-tuple<vector<Code>, map<string, size_t>> generate(Program*);
-void printObjectCode(tuple<vector<Code>, map<string, size_t>>);
+tuple<vector<Code>, map<string, size_t>, map<string, any>> generate(Program*);
+void printObjectCode(tuple<vector<Code>, map<string, size_t>, map<string, any>>);

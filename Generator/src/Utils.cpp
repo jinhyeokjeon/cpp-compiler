@@ -13,7 +13,7 @@ auto printTokenList(vector<Token>& tokenList) -> void {
     cout << token << endl;
 }
 
-void printObjectCode(tuple<vector<Code>, map<string, size_t>> objectCode) {
+void printObjectCode(tuple<vector<Code>, map<string, size_t>, map<string, any>> objectCode) {
   auto codeList = get<0>(objectCode);
   auto functionTable = get<1>(objectCode);
   cout << setw(11) << left << "FUNCTION" << "ADDRESS" << endl;

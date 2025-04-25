@@ -32,6 +32,7 @@ struct Variable : Statement {
   string name;
   Expression* expression;
   auto generate() -> void;
+  auto generate2() -> void;
 };
 struct For : Statement {
   Variable* variable;
