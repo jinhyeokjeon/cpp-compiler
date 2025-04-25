@@ -315,3 +315,386 @@ auto ExpressionStatement::generate() -> void {
   writeCode(Instruction::PopOperand);
 }
 ```
+
+## 5.2.7 논리or 연산자
+
+논리 or 연산자는 인터프리터와 마찬가지로 단락 평가가 되도록 코드를 생성한다. 우선 왼쪽 식 노드를 순회해 코드를 생성한다.
+
+왼쪽 식 노드를 순회한 후에는 LogicalOr 명령을 생성한다. LogicalOr 명령은 피연산자 스택에 있는 값이 참이라면 값을 그대로 둔 후 오른쪽 식의 끝으로 점프하고 아니라면 왼쪽 식의 값을 피연산자 스택에서 꺼내버리는 명령이다. 그런데 아직은 오른쪽 식의 끝을 알 수 없으므로 LogicalOr 코드의 주소를 임시로 보관한다.
+
+LogicalOr 명령을 생성한 후에는 오른쪽 식 노드를 순회해 코드를 생성한다. 오른쪽 식의 코드를 생성한 후에는 현재 주소가 오른쪽 식의 끝 주소가 되므로, LogicalOr 명령의 인자를 현재 주소로 패치한다.
+```cpp
+auto Or::generate() -> void {
+  lhs->generate();
+  size_t logicalOr = writeCode(Instruction::LogicalOr);
+  rhs->generate();
+  patchAddress(logicalOr);
+}
+
+static auto patchAddress(size_t codeIndex) -> void {
+  codeList[codeIndex].operand = codeList.size();
+}
+```
+![alt text](./images/26.png)
+
+주소 3의 PushBoolean false 코드는 피연산자 스택에 false를 넣는다.
+
+주소 4의 LogicalOr [8] 코드는 피연산자 스택에 있는 값이 참이면 주소 8로 점프하고 아니라면 값을 꺼내버린다.
+
+주소 5의 pushNumber 1 코드는 피연산자 스택에 숫자 1을 넣는다.
+
+주소 6의 pushNumber 2 코드는 피연산자 스택에 숫자 2를 넣는다.
+
+주소 7의 Add는 피연산자 스택에서 숫자 두 개를 꺼내 더하고 결과값을 다시 피연산자 스택에 넣는다.
+
+주소 8의 Print [1] 코드는 피연산자 스택에서 값을 하나 꺼내 콘솔에 출력한다.
+
+만약 or 연산자의 왼쪽 식이 true 였다면 주소 4의 LogicalOr [8] 코드는 주소 8로 점프하고, 피연산자 스택에는 true가 남아 있었을 것이다.
+
+> a or b or c 이고, a == true 라면, a-Or-b와 (a-Or-b)-Or-c 에서 logicalOr 가 두개 삽입되고, 두 번 점프가 일어나게 된다.
+
+## 5.2.8 변수 선언
+
+인터프리터에서는 변수를 관리하고자 변수의 이름고 값을 키와 값으로 하는 맵을 사용했다. 따라서 변수를 참조할 때마다 변수의 이름으로 맵을 검색했다. 그런데 변수의 이름이 아닌 변수 값이 위치한 주소, 즉 인덱스로 변수를 참조한다면 성능이 향상될 것이다.
+
+여기서 유의할 부분은 변수에 반드시 절대 주소가 아닌 상대 주소를 할당해야 한다는 것이다. 어떤 함수 내의 변수들이 절대 주소를 가지면 재귀 호출은 기대한 대로 동작하지 않는다. 동일한 함수가 여러 번 호출됐을 때도 이름이 같은 변수들이 서로 다른 값을 가질 수 있도록 하려면 상대 주소를 배정해야 한다.
+
+상대 주소를 **오프셋** 이라고 하며, 지역변수의 오프셋을 관리하기 위해 다음과 같은 데이터 타입의 전역변수를 선언한다. 맵은 변수의 이름과 오프셋을 키와 값으로 가지며 리스트는 변수의 유효 범위를 관리한다.
+
+```cpp
+static list<map<string, size_t>> symbolStack;
+```
+
+지역 변수는 선언된 위치에 따라 유효 범위가 달라진다. 블럭 밖에서 선언한 변수는 블럭 안에서 참조할 수 있찌만, 반대로 블럭 안에서 선언한 변수는 블럭 밖에서 참조할 수 없다. 그런데 이를 곰곰히 생각해보면 모든 지역변수들이 무조건 서로 다른 오프셋을 가질 필요가 없다는 것을 알 수 있다.
+
+```cpp
+C {
+  { A }
+  { B }
+}
+```
+위와 같은 형태의 코드가 있다고 했을 때, A 와 B는 동시에 실행되지 않으므로, A와 B 내부의 변수가 동시에 참조되는 경우는 없다. 따라서 A 내부 변수들과 B 내부 변수들은 같은 메모리 공간을 사용해도 괜찮다. 
+
+따라서 지역변수를 위한 공간은 max(A, B) 만큼만 만들면 된다. 이런 특성에 따라 오프셋을 관리할 수 있도록 다음과 같은 데이터 타입의 전역변수를 선언한다. 이 전역변수는 블럭 단위로 가장 큰 오프셋 값을 관리한다.
+```cpp
+static vector<size_t> offsetStack;
+```
+
+오프셋 스택은 블럭이 끝나면 값을 버리므로 이 값을 보관할 전역 변수도 선언한다.
+```cpp
+static size_t localSize;
+```
+
+함수 노드의 generate() 함수에서 본문 노드를 순회하기 전에, 함수를 실행하기 위해 필요한 메모리 공간을 할당하도록 Alloca 명령을 생성한다. 이 시점에서는 함수 본문에 변수각 얼마나 어디에 선언돼 있는지 알 수 없으므로, 본문 노드들의 순회가 끝나면 전역변수 localSize 값으로 Alloca 명령의 인자를 패치한다.
+```cpp
+size_t temp = writeCod(Instruction::Alloca);
+for (Statement* node: block) {
+  node->generate();
+}
+patchOperand(temp, localSize);
+
+auto patchOperand(size_t codeIndex, size_t operand) -> void {
+  codeList[codeIndex].operand = operand;
+}
+```
+
+본문 노드를 순회하기에 앞서 initBlock() 함수를 호출해 함수의 블럭을 초기화하고, 순회가 끝나면 popBlock() 함수를 호출해 함수의 블럭을 제거한다.
+```cpp
+auto Function::generate() -> void {
+  functionTable[name] = codeList.size();
+  size_t temp = writeCode(Instruction::Alloca);
+  initBlock();
+  for (auto& node : block)
+    node->generate();
+  popBlock();
+  patchOperand(temp, localSize);
+  writeCode(Instruction::Return);
+}
+
+static auto initBlock() -> void {
+  localSize = 0;
+  offsetStack.push_back(0);
+  symbolStack.emplace_front();
+}
+static auto popBlock() -> void {
+  offsetStack.pop_back();
+  symbolStack.pop_front();
+}
+```
+
+변수의 선언을 표현하는 노드에서는 현재 블럭에 변수의 이름을 등록한다.
+```cpp
+auto Variable::generate() -> void {
+  setLocalIdx(name);
+}
+```
+
+setLocalIdx() 보조함수는 변수를 심볼 스택의 현재 블럭에 등록한 후 오프셋 스택의 현재 블럭의 값을 1 증가시킨다. 또한 함수의 크기를 저장하는 전역변수 localSize의 값을 기존의 localSize의 값과 오프셋 스택의 현재 블럭 값 중 큰 값으로 설정해 함수를 실행하는 데 필요한 공간의 크기를 갱신한다. 변수의 오프셋은 단순히 0부터 순차적으로 증가하는 값이다.
+```cpp
+auto setLocalIdx(string name) -> void {
+  symbolStack.front()[name] = offsetStack.back();
+  offsetStack.back() += 1;
+  localSize = max(localSize, offsetStack.back());
+} 
+```
+
+현재 블럭에 변수의 이름을 등록한 후에는 초기화 식 노드를 순회하고 변수의 값을 초기화하도록 SetLocal 명령을 생성한다. 이 때 인자는 이 노드에서 등록한 변수의 오프셋이다.
+```cpp
+expression->generate();
+writeCode(Instruction::SetLocal, getLocalIdx(name));
+```
+
+getLocal() 보조함수는 변수명을 매개변수로 받아 오프셋을 반환한다. 심볼 스택의 블럭들을 생성된 순서의 역순으로 순회하며 찾는다. 등록된 변수가 없다면 size_t 자료형이 표현할 수 있는 가장 큰 값을 반환한다.
+```cpp
+auto getLocalIdx(string name) -> size_t {
+  for (map<string, size_t>& symbolTable: symbolStack) {
+    if (symbolTable.count(name)) {
+      return symbolTable[name];
+    }
+  }
+  return SIZE_MAX;
+}
+```
+
+변수의 값을 초기화하고 생성한 SetLocal 명령은 대입한 값을 연산 결과로 남긴다. 이 값이 피연산자 스택에 남아 있지 않도록 PopOperand 명령을 생성한다.
+```cpp
+audo Variable::generate() -> void {
+  setLocalIdx(name);
+  expression->generate();
+  writeCode(Instruction::SetLocal, getLocalIdx(name));
+  writeCode(Instruction::PopOperand);
+}
+```
+
+```cpp
+func main() {
+  var a = "first";
+  var b = "second";
+}
+```
+![alt text](./images/27.png)
+
+주소 3의 Alloca [2] 코드는 함수를 실행하기 위해 필요한 메모리 공간을 2만큼 할당한다.
+
+주소 4의 PushString "first" 코드는 피연산자 스택에 문자열 "first" 를 넣는다.
+
+주소 5의 SetLocal [0] 코드는 피연산자 스택의 값을 함수 공간의 첫 번째에 저장한다.
+
+주소 6의 PopOperand 코드는 피연산자 스택의 값을 꺼내 버린다.
+
+주소 4부터 6까지의 과정과 동일한 방식으로 주소 9까지 실행하면 아래와 같이 함수 공간이 설정된다.
+
+```
+0  "first"
+1  "second"
+```
+
+## 5.2.9 변수 참조
+
+변수값의 참조를 표현하는 노드에서는 변수의 오프셋을 인자로 GetLocal 명령을 생성한다.
+
+만약 getLocalIdx() 함수가 SIZE_MAX를 반환하면 변수의 이름을 인자로 전역변수를 참조하는 GetGlobal 명령을 생성하고, 아니라면 변수의 오프셋을 인자로 지역변수를 참조하는 GetLocal 명령을 생성한다.
+```cpp
+auto GetVariable::generate() -> void {
+  size_t idx = getLocalIdx(name);
+  if (idx == SIZE_MAX) {
+    if(global.count(name)) {
+      writeCode(Instruction::GetGlobal, name);
+    }
+    else {
+      cout << name << " doesn't exist." << endl;
+      exit(1);
+    }
+  }
+  else {
+    writeCode(Instruction::GetLocal, idx);
+  }
+}
+```
+
+변수값의 수정을 표현하는 노드도 비슷하게 할 수 있다.
+```cpp
+auto SetVariable::generate() -> void {
+  size_t idx = getLocalIdx(name);
+  value->generate();
+  if (idx == SIZE_MAX) {
+    if(global.count(name)) {
+      writeCode(Instruction::SetGlobal, name);
+    }
+    else {
+      cout << name << " doesn't exist." << endl;
+      exit(1);
+    }
+  }
+  else {
+    writeCode(Instruction::SetLocal, idx);
+  }
+}
+```
+
+> 전역변수 선언을 허용하도록 코드를 약간 수정하였다.
+> 다음은 추가한 Variable::generate2() 와 generate() 함수이다.
+```cpp
+static map<string, any> global;
+
+auto Variable::generate2() -> void {
+  global.insert({ name, any() });
+  expression->generate();
+  writeCode(Instruction::SetGlobal, name);
+  writeCode(Instruction::PopOperand);
+}
+
+auto generate(Program* program) -> tuple<vector<Code>, map<string, size_t>, map<string, any>> {
+  // 전역 변수 초기화
+  for (Variable* variable : program->variables) {
+    variable->generate2();
+  }
+
+  writeCode(Instruction::GetGlobal, string("main"));
+  writeCode(Instruction::Call, static_cast<size_t>(0));
+  writeCode(Instruction::Exit);
+
+  for (Function* function : program->functions) {
+    if (global.count(function->name)) {
+      cout << "Function name " << function->name << " and variable name " << function->name << " are duplicated." << endl;
+      exit(1);
+    }
+    function->generate();
+  }
+
+  return { codeList, functionTable, global };
+}
+```
+
+다음은 지역변수와 전역변수의 값을 수정하고 참조하는 소스코드 테스트이다.
+```cpp
+var global = 5;
+func main() {
+  var local = "Hello";
+  local = "World";
+  print(local);
+
+  global = 3;
+  print(global);
+}
+```
+
+![alt text](./images/28.png)
+
+주소 0 1 2 는 전역변수를 초기화하는 코드이다.
+
+피연산자 스택에 5를 삽입하고, SetGlobal "global" 명령어로 전역변수 "global"에 피연산자 스택을 pop 하여 값을 넣는다. 이후 PopOperand로 피연산자 스택에서 값을 제거한다.
+
+주소 7 8 9 는 함수 공간 인덱스 0에 "Hello" 를 집어넣는다.
+
+주소 10 11 12 는 함수 공간 인덱스 0에 "World"를 집어넣는다.
+
+주소 13 14 는 함수 공간 인덱스 0에 있는 값을 출력한다.
+
+주소 15 16 17은 전역변수 "global" 값에 3을 집어넣는다.
+
+주소 18 19는 전역변수 "global" 값을 가져와서 print한다.
+
+## 5.2.10 for문
+
+for문의 제어 변수는 for문에 종속된다. 블럭을 생성한 후 제어 변수를 초기화하는 목적 코드를 생성해 제어 변수의 유효 범위가 for문에 종속되도록 한다. pushBlock() 보조함수는 심볼 스택에 빈 블럭을 생성한다. 그리고 오프셋 스택에 새 블럭을 생성한다. 이때 시작값은 현재 블럭의 오프셋 값이다.
+```cpp
+static auto pushBlock() -> void {
+  offsetStack.push_back(offsetStack.back());
+  symbolStack.emplace_front();
+}
+
+auto For::generate() -> void {
+  pushBlock();
+  variable->generate();
+}
+```
+
+제어변수를 초기화하는 목적 코드를 생성했으므로 이제 조건식의 목적 코드를 생성한다. 본문을 실행할 때마다 조건식을 실행하려면 조건식의 주소를 알아야 하므로 현재 주소를 임시로 보관한 후 조건식 노드를 순회해 목적 코드를 생성한다.
+
+조건식의 결과가 참이 아니라면 반복을 중단해야 한다. 그런데 현재로서는 생성 중인 for문의 끝 주소를 알 수가 없으므로, 점프할 주소는 생략하고 식의 결과가 참이 아닌 경우에 점프하는 ConditionJump 명령을 생성한다.
+
+이후 본문 노드들을 순회해 조건식의 결과가 참인 경우 실행할 목적 코드를 생성한다.
+
+본문을 실행한 후에는 증감식을 실행하도록 하고, 결과값이 버려지도록 PopOperand() 명령을 생성한다.
+```cpp
+size_t jumpAddress = codeList.size();
+condition->generate();
+
+size_t conditionJump = writeCode(Instruction::ConditionJump);
+
+for (Statement* node: block) {
+  node->generate();
+}
+
+expression->generate();
+writeCode(Instruction::PopOperand);
+
+writeCode(Instruction::Jump, jumpAddress);
+```
+
+for문의 목적 코드를 모두 생성했으니 조건식의 결과가 참이 아닌 경우에는 현재 주소로 점프하도록 ConditionJump 명령을 패치하고, 생성했던 for문의 블럭을 제거한다.
+```cpp
+patchAddress(conditionJump);
+popBlock();
+```
+
+다음은 for문 테스트이다.
+```cpp
+func main() {
+  for(var i = 0; i < 3; i = i + 1) {
+    print(i);
+  }
+}
+```
+![alt text](./images/29.png)
+
+> ++i 또는 --i도 가능하도록 수정하였다. 이를 반영한 Unary::generate() 코드는 다음과 같다.
+```cpp
+auto Unary::generate() -> void {
+  map<Kind, Instruction> instruction = {
+    {Kind::Add,      Instruction::Absolute},
+    {Kind::Subtract, Instruction::ReverseSign}
+  };
+  if (instruction.count(kind)) {
+    sub->generate();
+    writeCode(instruction[kind]);
+  }
+  else {
+    size_t idx = getLocalIdx(name);
+    if (idx == SIZE_MAX) {
+      if (global.count(name)) {
+        writeCode(Instruction::GetGlobal, name);
+        writeCode(Instruction::PushNumber, double(1));
+        if (kind == Kind::Increase) {
+          writeCode(Instruction::Add);
+        }
+        else {
+          writeCode(Instruction::Subtract);
+        }
+        writeCode(Instruction::SetGlobal, name);
+      }
+      else {
+        cout << name << " doesn't exist." << endl;
+        exit(1);
+      }
+    }
+    else {
+      writeCode(Instruction::GetLocal, idx);
+      writeCode(Instruction::PushNumber, double(1));
+      if (kind == Kind::Increase) {
+        writeCode(Instruction::Add);
+      }
+      else {
+        writeCode(Instruction::Subtract);
+      }
+      writeCode(Instruction::SetLocal, idx);
+    }
+  }
+}
+```
+
+이전 테스트의 i = i + 1 를 ++i 로 바꾼 결과는 다음과 같다.
+![alt text](./images/30.png)
+
+동일한 목적 코드가 생성되었다.

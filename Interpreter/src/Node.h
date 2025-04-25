@@ -101,7 +101,7 @@ struct GetElement : Expression {
   auto interpret() -> any;
 };
 struct SetElement : Expression {
-  Expression* sub; // GetVariable*
+  Expression* sub;
   Expression* index;
   Expression* value;
   auto interpret() -> any;

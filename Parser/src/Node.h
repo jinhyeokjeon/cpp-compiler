@@ -98,7 +98,7 @@ struct GetElement : Expression {
   auto print(int) -> void;
 };
 struct SetElement : Expression {
-  Expression* sub; // GetVariable*
+  Expression* sub;
   Expression* index;
   Expression* value;
   auto print(int) -> void;

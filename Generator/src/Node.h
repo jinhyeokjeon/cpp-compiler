@@ -102,7 +102,7 @@ struct GetElement : Expression {
   auto generate() -> void;
 };
 struct SetElement : Expression {
-  Expression* sub; // GetVariable*
+  Expression* sub;
   Expression* index;
   Expression* value;
   auto generate() -> void;

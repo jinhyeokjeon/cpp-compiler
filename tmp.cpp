@@ -1,254 +1,272 @@
 /*
-#include <iostream>
-#include <functional>
-#include <vector>
-#include <list>
 #include <map>
-#include <any>
-#include <cmath>
+#include <list>
+#include <tuple>
+#include <vector>
+#include <iomanip>
 #include "Node.h"
-#include "Datatype.h"
+#include "Code.h"
 
 using namespace std;
 
-struct ReturnException {
-  any result;
-};
-struct BreakException {};
-struct ContinueException {};
+static size_t getLocal(string);
+static void setLocal(string);
+static void initBlock();
+static void pushBlock();
+static void popBlock();
+static size_t writeCode(Instruction);
+static size_t writeCode(Instruction, any);
+static void patchAddress(size_t);
+static void patchOperand(size_t, size_t);
 
-static map<string, Function*> functionTable;
-static list<list<map<string, any>>> local;
-static map<string, any> global;
-extern map<string, function<any(vector<any>)>> builtinFunctionTable; // vector<any> 타입의 인자를 받고, any 타입을 반환하는 함수
-void interpret(Program* program) {
+static vector<Code> codeList;
+static map<string, size_t> functionTable;
+static size_t localSize;
+static vector<size_t> offsetStack;
+static list<map<string, size_t>> symbolStack;
+static vector<vector<size_t>> continueStack;
+static vector<vector<size_t>> breakStack;
+
+tuple<vector<Code>, map<string, size_t>> generate(Program* program) {
+  codeList.clear();
   functionTable.clear();
+  writeCode(Instruction::GetGlobal, string("main"));
+  writeCode(Instruction::Call, static_cast<size_t>(0));
+  writeCode(Instruction::Exit);
   for (auto& node : program->functions)
-    functionTable[node->name] = node;
-  if (functionTable["main"] == nullptr)
-    return;
-  try {
-    local.emplace_back().emplace_front();
-    functionTable["main"]->interpret();
-  }
-  catch (ReturnException e) {
-    local.pop_back();
-  }
+    node->generate();
+  return { codeList, functionTable };
 }
-void Function::interpret() {
-  for (auto& node : block) {
-    node->interpret();
-  }
+void Function::generate() {
+  functionTable[name] = codeList.size();
+  auto temp = writeCode(Instruction::Alloca);
+  initBlock();
+  for (auto& name : parameters)
+    setLocal(name);
+  for (auto& node : block)
+    node->generate();
+  popBlock();
+  patchOperand(temp, localSize);
+  writeCode(Instruction::Return);
 }
-void Variable::interpret() {
-  local.back().front()[name] = expression->interpret();
+void Variable::generate() {
+  setLocal(name);
+  expression->generate();
+  writeCode(Instruction::SetLocal, getLocal(name));
+  writeCode(Instruction::PopOperand);
 }
-void Return::interpret() {
-  throw ReturnException{ expression->interpret() };
+void Return::generate() {
+  expression->generate();
+  writeCode(Instruction::Return);
 }
-void For::interpret() {
-  local.back().emplace_front();
-  variable->interpret();
-  while (true) {
-    auto result = condition->interpret();
-    if (!isTrue(result)) break;
-    try {
-      for (auto& node : block)
-        node->interpret();
-    }
-    catch (ContinueException) {}
-    catch (BreakException) { break; }
-    expression->interpret();
-  }
-  local.back().pop_front();
+void For::generate() {
+  breakStack.emplace_back();
+  continueStack.emplace_back();
+  pushBlock();
+  variable->generate();
+  auto jumpAddress = codeList.size();
+  condition->generate();
+  auto conditionJump = writeCode(Instruction::ConditionJump);
+  for (auto& node : block)
+    node->generate();
+  auto continueAddress = codeList.size();
+  expression->generate();
+  writeCode(Instruction::PopOperand);
+  writeCode(Instruction::Jump, jumpAddress);
+  patchAddress(conditionJump);
+  popBlock();
+  for (auto& jump : breakStack.back())
+    patchAddress(jump);
+  breakStack.pop_back();
+  for (auto& jump : continueStack.back())
+    patchOperand(jump, continueAddress);
+  continueStack.pop_back();
 }
-void Break::interpret() {
-  throw BreakException();
+void Break::generate() {
+  if (breakStack.empty()) return;
+  auto jumpCode = writeCode(Instruction::Jump);
+  breakStack.back().push_back(jumpCode);
 }
-void Continue::interpret() {
-  throw ContinueException();
+void Continue::generate() {
+  if (continueStack.empty()) return;
+  auto jumpCode = writeCode(Instruction::Jump);
+  continueStack.back().push_back(jumpCode);
 }
-void If::interpret() {
-  for (int i = 0; i < conditions.size(); ++i) {
-    auto result = conditions[i]->interpret();
-    if (!isTrue(result)) continue;
-    local.back().emplace_front();
+void If::generate() {
+  vector<size_t> jumpList;
+  for (auto i = 0; i < conditions.size(); ++i) {
+    conditions[i]->generate();
+    auto conditionJump = writeCode(Instruction::ConditionJump);
+    pushBlock();
     for (auto& node : blocks[i])
-      node->interpret();
-    local.back().pop_front();
-    return;
+      node->generate();
+    popBlock();
+    jumpList.push_back(writeCode(Instruction::Jump));
+    patchAddress(conditionJump);
   }
-  if (elseBlock.empty()) return;
-  local.back().emplace_front();
-  for (auto& node : elseBlock)
-    node->interpret();
-  local.back().pop_front();
+  if (!elseBlock.empty()) {
+    pushBlock();
+    for (auto& node : elseBlock)
+      node->generate();
+    popBlock();
+  }
+  for (auto& jump : jumpList)
+    patchAddress(jump);
 }
-void Print::interpret() {
-  for (auto& node : arguments) {
-    auto value = node->interpret();
-    cout << value;
+void Print::generate() {
+  for (int i = arguments.size() - 1; i >= 0; --i) {
+    arguments[i]->generate();
   }
+  writeCode(Instruction::Print, arguments.size());
   if (lineFeed)
-    cout << endl;
+    writeCode(Instruction::PrintLine);
 }
-void ExpressionStatement::interpret() {
-  expression->interpret();
+void ExpressionStatement::generate() {
+  expression->generate();
+  writeCode(Instruction::PopOperand);
 }
-any Or::interpret() {
-  return isTrue(lhs->interpret()) ? true : rhs->interpret();
+
+void Or::generate() {
+  lhs->generate();
+  // LogicalOr = 스택에 있는 값이 참이면 값을 그대로 둔 후, 오른쪽 식의 끝으로 점프.
+  // 아니라면 왼쪽 식의 값을 피연산자 스택에서 꺼내버리는 명령어.
+  auto logicalOr = writeCode(Instruction::LogicalOr);
+  rhs->generate();
+  patchAddress(logicalOr);
 }
-any And::interpret() {
-  return isFalse(lhs->interpret()) ? false : rhs->interpret();
+void And::generate() {
+  lhs->generate();
+  // LogicalAnd = 스택에 있는 값이 거짓이면 값을 그대로 둔 후, 오른쪽 식의 끝으로 점프.
+  // 아니라면 왼쪽 식의 값을 피연산자 스택에서 꺼내버리는 명령어.
+  auto logicalAnd = writeCode(Instruction::LogicalAnd);
+  rhs->generate();
+  patchAddress(logicalAnd);
 }
-any Relational::interpret() {
-  auto lValue = lhs->interpret();
-  auto rValue = rhs->interpret();
-  if (isNumber(lValue) && isNumber(rValue)) {
-    if (kind == Kind::LessThan) return toNumber(lValue) < toNumber(rValue);
-    if (kind == Kind::LessOrEqual) return toNumber(lValue) <= toNumber(rValue);
-    if (kind == Kind::GreaterThan) return toNumber(lValue) > toNumber(rValue);
-    if (kind == Kind::GreaterOrEqual) return toNumber(lValue) >= toNumber(rValue);
-    if (kind == Kind::Equal) return toNumber(lValue) == toNumber(rValue);
-    if (kind == Kind::NotEqual) return toNumber(lValue) != toNumber(rValue);
+void Relational::generate() {
+  map<Kind, Instruction> instructions = {
+    {Kind::Equal,          Instruction::Equal},
+    {Kind::NotEqual,       Instruction::NotEqual},
+    {Kind::LessThan,       Instruction::LessThan},
+    {Kind::GreaterThan,    Instruction::GreaterThan},
+    {Kind::LessOrEqual,    Instruction::LessOrEqual},
+    {Kind::GreaterOrEqual, Instruction::GreaterOrEqual}
+  };
+  lhs->generate();
+  rhs->generate();
+  writeCode(instructions[kind]);
+}
+void Arithmetic::generate() {
+  map<Kind, Instruction> instructions = {
+    {Kind::Add,      Instruction::Add},
+    {Kind::Subtract, Instruction::Subtract},
+    {Kind::Multiply, Instruction::Multiply},
+    {Kind::Divide,   Instruction::Divide},
+    {Kind::Modulo,   Instruction::Modulo},
+  };
+  lhs->generate();
+  rhs->generate();
+  writeCode(instructions[kind]);
+}
+void Unary::generate() {
+  map<Kind, Instruction> instruction = {
+    {Kind::Add,      Instruction::Absolute},
+    {Kind::Subtract, Instruction::ReverseSign}
+  };
+  sub->generate();
+  writeCode(instruction[kind]);
+}
+void Call::generate() {
+  for (int i = arguments.size() - 1; i >= 0; i--)
+    arguments[i]->generate();
+  sub->generate();
+  writeCode(Instruction::Call, arguments.size());
+}
+void GetElement::generate() {
+  sub->generate();
+  index->generate();
+  writeCode(Instruction::GetElement);
+}
+void SetElement::generate() {
+  value->generate();
+  sub->generate();
+  index->generate();
+  writeCode(Instruction::SetElement);
+}
+void GetVariable::generate() {
+  if (getLocal(name) == SIZE_MAX)
+    writeCode(Instruction::GetGlobal, name);
+  else
+    writeCode(Instruction::GetLocal, getLocal(name));
+}
+void SetVariable::generate() {
+  value->generate();
+  if (getLocal(name) == SIZE_MAX)
+    writeCode(Instruction::SetGlobal, name);
+  else
+    writeCode(Instruction::SetLocal, getLocal(name));
+}
+void NullLiteral::generate() {
+  writeCode(Instruction::PushNull);
+}
+void BooleanLiteral::generate() {
+  writeCode(Instruction::PushBoolean, value);
+}
+void NumberLiteral::generate() {
+  writeCode(Instruction::PushNumber, value);
+}
+void StringLiteral::generate() {
+  writeCode(Instruction::PushString, value);
+}
+void ArrayLiteral::generate() {
+  for (int i = values.size() - 1; i >= 0; --i)
+    values[i]->generate();
+  writeCode(Instruction::PushArray, values.size());
+}
+void MapLiteral::generate() {
+  for (auto& [key, value] : values) {
+    writeCode(Instruction::PushString, key);
+    value->generate();
   }
-  else if (isString(lValue) && isString(rValue)) {
-    if (kind == Kind::LessThan) return toString(lValue) < toString(rValue);
-    if (kind == Kind::LessOrEqual) return toString(lValue) <= toString(rValue);
-    if (kind == Kind::GreaterThan) return toString(lValue) > toString(rValue);
-    if (kind == Kind::GreaterOrEqual) return toString(lValue) >= toString(rValue);
-    if (kind == Kind::Equal) return toString(lValue) == toString(rValue);
-    if (kind == Kind::NotEqual) return toString(lValue) != toString(rValue);
-  }
-  else if (isBoolean(lValue) && isBoolean(rValue)) {
-    if (kind == Kind::Equal) return toBoolean(lValue) == toBoolean(rValue);
-    if (kind == Kind::NotEqual) return toBoolean(lValue) != toBoolean(rValue);
-  }
-  cout << lValue << " " << toString(kind) << " " << rValue << " 연산 불가능\n";
-  exit(1);
+  writeCode(Instruction::PushMap, values.size());
 }
-any Arithmetic::interpret() {
-  auto lValue = lhs->interpret();
-  auto rValue = rhs->interpret();
-  if (isNumber(lValue) && isNumber(rValue)) {
-    if (kind == Kind::Add) return toNumber(lValue) + toNumber(rValue);
-    else if (kind == Kind::Subtract) return toNumber(lValue) - toNumber(rValue);
-    else if (kind == Kind::Multiply) return toNumber(lValue) * toNumber(rValue);
-    else if (kind == Kind::Divide && toNumber(rValue) != 0) return toNumber(lValue) / toNumber(rValue);
-    else if (kind == Kind::Modulo && toNumber(rValue) != 0) return fmod(toNumber(lValue), toNumber(rValue));
+
+void initBlock() {
+  localSize = 0;
+  offsetStack.push_back(0);
+  symbolStack.emplace_front();
+}
+void pushBlock() {
+  symbolStack.emplace_front();
+  offsetStack.push_back(offsetStack.back());
+}
+void popBlock() {
+  offsetStack.pop_back();
+  symbolStack.pop_front();
+}
+size_t getLocal(string name) {
+  for (auto& symbolTable : symbolStack) {
+    if (symbolTable.count(name))
+      return symbolTable[name];
   }
-  else if (isString(lValue) && isString(rValue) && kind == Kind::Add)
-    return toString(lValue) + toString(rValue);
-  else if (isString(lValue) && isNumber(rValue) && kind == Kind::Multiply) {
-    string ret = "";
-    for (int i = 0; i < (int)(toNumber(rValue)); ++i)
-      ret += toString(lValue);
-    return ret;
-  }
-  cout << lValue << " " << toString(kind) << " " << rValue << " 연산은 불가능합니다.\n";
-  exit(1);
+  return SIZE_MAX;
 }
-any Unary::interpret() {
-  auto value = sub->interpret();
-  if (isNumber(value)) {
-    if (kind == Kind::Add) return toNumber(value);
-    else return toNumber(value) * -1;
-  }
-  cout << toString(kind) << " " << value << " 는 연산 불가능합니다.\n";
-  exit(1);
+void setLocal(string name) {
+  symbolStack.front()[name] = offsetStack.back();
+  ++offsetStack.back();
+  localSize = max(localSize, offsetStack.back());
 }
-any Call::interpret() {
-  auto value = sub->interpret();
-  if (isBuiltinFunction(value)) {
-    vector<any> values;
-    for (int i = 0; i < arguments.size(); ++i)
-      values.push_back(arguments[i]->interpret());
-    return toBuiltinFunction(value)(values);
-  }
-  if (!isFunction(value)) {
-    cout << "함수 호출 오류\n";
-    exit(1);
-  }
-  map<string, any> parameters;
-  for (auto i = 0; i < arguments.size(); ++i) {
-    auto name = toFunction(value)->parameters[i];
-    parameters[name] = arguments[i]->interpret();
-  }
-  local.emplace_back().push_front(parameters);
-  try {
-    toFunction(value)->interpret();
-  }
-  catch (ReturnException exception) {
-    local.pop_back();
-    return exception.result;
-  }
-  local.pop_back();
-  return nullptr;
+size_t writeCode(Instruction instruction) {
+  codeList.push_back({ instruction });
+  return codeList.size() - 1;
 }
-any GetElement::interpret() {
-  auto object = sub->interpret();
-  auto index_ = index->interpret();
-  if (isArray(object) && isNumber(index_))
-    return getValueOfArray(object, index_);
-  if (isMap(object) && isString(index_))
-    return getValueOfMap(object, index_);
-  cout << "참조 오류\n";
-  exit(1);
+size_t writeCode(Instruction instruction, any operand) {
+  codeList.push_back({ instruction, operand });
+  return codeList.size() - 1;
 }
-any SetElement::interpret() {
-  auto object = sub->interpret();
-  auto index_ = index->interpret();
-  auto value_ = value->interpret();
-  if (isArray(object) && isNumber(index_))
-    return setValueOfArray(object, index_, value_);
-  if (isMap(object) && isString(index_))
-    return setValueOfMap(object, index_, value_);
-  cout << "참조 오류\n";
-  exit(1);
+void patchAddress(size_t codeIndex) {
+  codeList[codeIndex].operand = codeList.size();
 }
-any GetVariable::interpret() {
-  for (auto& variables : local.back()) {
-    if (variables.count(name))
-      return variables[name];
-  }
-  if (global.count(name)) {
-    return global[name];
-  }
-  if (builtinFunctionTable.count(name))
-    return builtinFunctionTable[name];
-  if (functionTable.count(name))
-    return functionTable[name];
-  return nullptr;
-}
-any SetVariable::interpret() {
-  for (auto& variables : local.back()) {
-    if (variables.count(name))
-      return variables[name] = value->interpret();
-  }
-  return global[name] = value->interpret();
-}
-any NullLiteral::interpret() {
-  return nullptr;
-}
-any BooleanLiteral::interpret() {
-  return value;
-}
-any NumberLiteral::interpret() {
-  return value;
-}
-any StringLiteral::interpret() {
-  return value;
-}
-any ArrayLiteral::interpret() {
-  auto result = new Array();
-  for (auto& node : values)
-    result->values.push_back(node->interpret());
-  return result;
-}
-any MapLiteral::interpret() {
-  auto result = new Map();
-  for (auto& [key, value] : values)
-    result->values[key] = value->interpret();
-  return result;
+void patchOperand(size_t codeIndex, size_t operand) {
+  codeList[codeIndex].operand = operand;
 }
 */

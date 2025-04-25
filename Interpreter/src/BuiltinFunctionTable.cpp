@@ -50,7 +50,4 @@ map<string, function<any(vector<any>)>> builtinFunctionTable = {
   {"clock", [](vector<any> values)->any {
     return static_cast<double>(clock());
   }},
-  {"sqrt", [](vector<any> values)->any {
-    return sqrt(toNumber(values[0]));
-  }}
 };
