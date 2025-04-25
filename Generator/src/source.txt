@@ -1,5 +1,11 @@
 func main() {
-  for(var i = 0; i < 3; ++i) {
-    print(i);
+  if(true) {
+    print("if");
+  }
+  elif(true) {
+    print("elif");
+  }
+  else {
+    print("else");
   }
 }

@@ -698,3 +698,101 @@ auto Unary::generate() -> void {
 ![alt text](./images/30.png)
 
 동일한 목적 코드가 생성되었다.
+
+## 5.2.11 if문
+
+if문은 여러 개의 조건식과 본문을 가지는데 하나의 본문을 실행했다면 if문의 끝으로 점프해야 한다. 그런데 목적 코드를 작성하는 중에는 끝 주소를 알 수 없으므로 생성한 점프 명령 코드의 인덱스들을 보관할 리스트를 생성하고 조건식의 개수만큼 반복함으로써 시작한다.
+```cpp
+auto If::generate() -> void {
+  vector<size_t> idxList;
+  for (int i = 0; i < conditions.size(); ++i) {
+  }
+}
+```
+
+반복문 안에서는 조건식 노드를 순회해 목적 코드를 생성하고 조건식의 결과가 참이 아니라면 다음 조건식의 주소로 점프하도록 ConditionJump 명령을 생성한다.
+```cpp
+condition[i]->generate();
+size_t conditionJump = writeCode(Instruction::ConditionJump);
+```
+
+조건식의 결과가 참이라면 for문과 동일하게 블럭을 생성하고, 본문의 문 노드들을 순회해 목적 코드를 생성한 후 생성했던 블럭을 제거한다.
+```cpp
+pushBlock();
+for (Statement* node: blocks[i]) {
+  node->generate();
+}
+popBlock();
+```
+
+본문을 실행한 후에는 다른 elif절이나 else절을 실행하지 않도록 Jump 명령을 생성하고 생성된 코드의 코드 인덱스를 리스트에 보관한다.
+```cpp
+idxList.push_back(writeCode(instruction::Jump));
+```
+
+하나의 조건식에 대한 본문의 목적 코드 생성이 끝났으므로 조건식의 결과가 참이 아니라면 현재 주소로 점프하도록 한다. 즉 생성했던 ConditionJump 명령을 패치한다.
+```cpp
+patchAddress(conditionJump);
+```
+
+else절이 있다면 else절 본문의 문 노드들을 순회해 목적 코드를 생성한다. 마찬가지로 순회하기 전에 블럭을 생성하고 순회가 끝나면 블럭을 제거한다.
+```cpp
+if (!elseBlock.empty()) {
+  pushBlock();
+  for (Statement* node: elseBlock) {
+    node->generate();
+  }
+  popBlock();
+}
+```
+
+if문의 목적 코드 생성이 끝났으므로 현재 주소가 if문의 끝 주소가 된다. 하나의 본문을 실행한 후에는 현재 주소로 점프하도록 점프 코드 리스트를 순회해 Jump 명령을 패치한다.
+```cpp
+for (size_t& jump: idxList) {
+  patchAddress(jump);
+}
+```
+
+아래는 완성된 If::generate() 코드이다.
+```cpp
+auto If::generate() -> void {
+  vector<size_t> idxList;
+  for (int i = 0; i < conditions.size(); ++i) {
+    conditions[i]->generate();
+    size_t conditionJump = writeCode(Instruction::ConditionJump);
+    pushBlock();
+    for (Statement* node : blocks[i]) {
+      node->generate();
+    }
+    popBlock();
+    idxList.push_back(writeCode(Instruction::Jump));
+    patchAddress(conditionJump);
+  }
+  if (!elseBlock.empty()) {
+    pushBlock();
+    for (Statement* node : elseBlock) {
+      node->generate();
+    }
+    popBlock();
+  }
+  for (size_t idx : idxList) {
+    patchAddress(idx);
+  }
+}
+```
+
+다음은 if문 테스트 코드이다.
+```cpp
+func main() {
+  if(true) {
+    print("if");
+  }
+  elif(true) {
+    print("elif");
+  }
+  else {
+    print("else");
+  }
+}
+```
+![alt text](./images/31.png)

@@ -96,7 +96,30 @@ auto For::generate() -> void {
 }
 auto Break::generate() -> void {}
 auto Continue::generate() -> void {}
-auto If::generate() -> void {}
+auto If::generate() -> void {
+  vector<size_t> idxList;
+  for (int i = 0; i < conditions.size(); ++i) {
+    conditions[i]->generate();
+    size_t conditionJump = writeCode(Instruction::ConditionJump);
+    pushBlock();
+    for (Statement* node : blocks[i]) {
+      node->generate();
+    }
+    popBlock();
+    idxList.push_back(writeCode(Instruction::Jump));
+    patchAddress(conditionJump);
+  }
+  if (!elseBlock.empty()) {
+    pushBlock();
+    for (Statement* node : elseBlock) {
+      node->generate();
+    }
+    popBlock();
+  }
+  for (size_t idx : idxList) {
+    patchAddress(idx);
+  }
+}
 auto Print::generate() -> void {
   for (int i = arguments.size() - 1; i >= 0; --i) {
     arguments[i]->generate();
