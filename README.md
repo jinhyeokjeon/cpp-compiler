@@ -21,3 +21,5 @@
 [4. 인터프리터](./descriptions/chapter4.md)
 
 [5. 코드 생성](./descriptions/chapter5.md)
+
+[6. 가상머신](./descriptions/chapter6.md)

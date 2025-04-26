@@ -1,0 +1,10 @@
+func main() {
+  print(factorial(3));
+}
+
+func factorial(var n) {
+  if(n < 2) {
+    return 1;
+  }
+  return n * factorial(n - 1);
+}

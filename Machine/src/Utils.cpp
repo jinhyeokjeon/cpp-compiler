@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
-#include <iomanip>
 #include <set>
+#include <iomanip>
 #include "Token.h"
 #include "Node.h"
 #include "Code.h"
@@ -14,7 +14,7 @@ auto printTokenList(vector<Token>& tokenList) -> void {
     cout << token << endl;
 }
 
-void printObjectCode(tuple< vector<Code>, map<string, size_t>, set<string>> objectCode) {
+void printObjectCode(tuple<vector<Code>, map<string, size_t>, set<string>> objectCode) {
   auto codeList = get<0>(objectCode);
   auto functionTable = get<1>(objectCode);
   cout << setw(11) << left << "FUNCTION" << "ADDRESS" << endl;
