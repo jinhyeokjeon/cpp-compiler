@@ -20,7 +20,7 @@ static auto writeCode(Instruction, any) -> size_t;
 
 static vector<Code> codeList;
 static map<string, size_t> functionTable;
-static map<string, any> global;
+static set<string> global;
 static set<string> builtinFunctionList = { "sqrt", "length", "push", "pop", "erase", "clock" };
 static size_t localSize;
 static vector<size_t> offsetStack;
@@ -28,7 +28,7 @@ static list<map<string, size_t>> symbolStack;
 static vector<vector<size_t>> continueAddrStack;
 static vector<vector<size_t>> breakAddrStack;
 
-auto generate(Program* program) -> tuple<vector<Code>, map<string, size_t>, map<string, any>> {
+auto generate(Program* program) -> tuple<vector<Code>, map<string, size_t>, set<string>> {
   // 전역 변수 초기화
   for (Variable* variable : program->variables) {
     if (builtinFunctionList.count(variable->name)) {
@@ -80,7 +80,7 @@ auto Variable::generate() -> void {
   writeCode(Instruction::PopOperand);
 }
 auto Variable::generate2() -> void {
-  global.insert({ name, any() });
+  global.insert(name);
   expression->generate();
   writeCode(Instruction::SetGlobal, name);
   writeCode(Instruction::PopOperand);

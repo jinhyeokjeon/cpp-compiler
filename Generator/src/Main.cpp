@@ -15,6 +15,6 @@ auto main() -> int {
 
   vector<Token> tokenList = scan(sourceCode);
   Program* syntaxTree = parse(tokenList);
-  tuple<vector<Code>, map<string, size_t>, map<string, any>> objectCode = generate(syntaxTree);
+  tuple<vector<Code>, map<string, size_t>, set<string>> objectCode = generate(syntaxTree);
   printObjectCode(objectCode);
 }
