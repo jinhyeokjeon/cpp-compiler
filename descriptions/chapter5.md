@@ -796,3 +796,204 @@ func main() {
 }
 ```
 ![alt text](./images/31.png)
+
+주소 5: if문의 조건식이 참이 아닐 때 elif절의 조건식의 주소 9로 점프한다.
+주소 8: if문의 조건식이 참일 때 if 블록을 실행한 후, if문의 끝 주소 16으로 점프한다.
+
+주소 10: elif문의 조건식이 참이 아닐 때 else절의 본문 주소 14로 점프한다.
+주소 13: elif문의 조건식이 참일 때 elif 블록을 실행한 후, if문의 끝 주소 16으로 점프한다.
+
+## 5.2.12 continue문
+
+continue문은 가장 가까운 for문의 증감식의 주소로 점프하도록 구현한다. 우선 Jump 코드의 주소를 담을 리스트를 전역변수로 선언하자.
+```cpp
+static vector<vector<size_t>> continueAddrStack;
+```
+
+continue문 노드의 generate() 함수에서는 가장 가까운 for문의 증감식의 주소로 점프할 Jump 코드를 생성하고, 생성한 코드의 주소를 컨티뉴 스택의 현재 블럭에 추가한다.
+```cpp
+auto Continue::generate() -> void {
+  if (continueAddrStack.empty()) return;
+  size_t jumpIdx = writeCode(Instruction::Jump);
+  continueAddrStack.back().push_back(jumpIdx);
+}
+```
+
+컨티뉴 스택의 블럭은 for문 노드의 시작 부분에서 생성한다.
+```cpp
+continueAddrStack.emplace_back();
+pushBlock();
+```
+
+그리고 증감식 노드를 순회해 목적 코드를 생성하기 전에 현재 주소를 임시로 보관한다.
+```cpp
+size_t continueAddress = codeList.size();
+expression->generate();
+```
+
+끝으로 for문 노드의 마지막 부분에서, 컨티뉴 스택의 현재 블럭에 있는 Jump 코드들을 증감식의 주소로 점프하도록 패치하고, 시작 부분에서 생성한 블럭을 제거한다.
+```cpp
+popBlock();
+for (size_t jumpIdx: continueAddrStack.back()) {
+  patchOperand(jump, continueAddress);
+}
+continueAddrStack.pop_back();
+```
+
+## 5.2.13 함수 호출
+
+함수 호출 시 인자를 전달하기 위해 인자 식 노드들을 순회해 목적 코드를 생성한다. 그런데 여러 개의 값을 차례대로 스택에 넣었다가 꺼내면 순서가 뒤바뀌므로 인자값들의 순서를 유지하기 위해 역순으로 인자 식 노드들을 순회한다.
+```cpp
+auto Call::generate() -> void {
+  for (int i = arguements.size() - 1; i >= 0; --i) {
+    arguments[i]->generate();
+  }
+}
+```
+
+이어서 호출할 함수의 주소를 얻기 위해 함수 이름에 해당하는 주소를 얻어오는 코드를 추가한다.
+```cpp
+writeCode(Instruction::GetGlobal, name);
+```
+
+끝으로 인자 식 노드의 개수를 인자로 함수를 호출하는 Call 명령을 생성한다.
+```cpp
+writeCode(Instruction::Call, arguments.size());
+```
+
+함수의 본문에서는 인자값들을 참조할 수 있도록 함수 노드의 generate() 함수에 매개변수들의 이름을 등록하는 코드를 추가한다.
+```cpp
+initBlock();
+for (string& name: parameters) {
+  setLocal(name);
+}
+```
+
+또한 함수가 값을 반환할 수 있도록 return문 노드의 generate() 함수에서는 식 노드를 순회해 반환값을 피연산자 스택에 넣는 코드를 생성하고 Return 명령을 생성한다.
+```cpp
+auto Return::generate() -> void {
+  expression->generate();
+  writeCode(Instruction::Return);
+}
+```
+
+아래는 함수 호출 테스트 코드이다.
+```cpp
+func main() {
+  print(add(3, 4));
+}
+
+func add(var a, var b) {
+  return a + b;
+}
+```
+![alt text](./images/32.png)
+
+주소 3과 주소 4의 코드는 피연산자 스택에 인자 값 4와 3을 넣는다.
+
+주소 6의 getGlobal "add" 코드는 함수 테이블을 참조해 add() 함수의 주소 11을 피연산자 스택에 넣는다.
+
+주소 7의 Call [2] 명령어는 피연산자 스택에 있는 add() 함수의 주소 11로 점프한다. 이 때 피연산자 스택에서 값 2개를 꺼내서 각각 함수공간 인덱스 0, 1 에 넣는다.
+
+주소 11과 12의 명령어는 함수공간 인덱스 0, 1의 값을 피연산자 스택에 넣는다.
+
+주소 13의 명령어는 피연산자 스택에서 값 두 개를 꺼내 더한 결과값을 다시 피연산자 스택에 넣는다.
+
+주소 14의 Return 코드는 함수 공간을 정리하고 add() 함수를 호출한 코드의 주소7의 바로 다음인 8로 점프한다. 점프하는 시점에서 피연산자 스택에 남아 있는 값 7이 add() 함수의 반환값이다.
+
+주소 8의 Print [1] 코드는 피연산자 스택에서 값 하나를 꺼내 콘솔에 출력한다.
+
+## 5.2.14 배열 리터럴
+
+문자열 리터럴 노드에서 피연산자 스택에 문자열을 넣는 코드를 생성했듯이, 배열 리터럴 노드에서는 피연산자 스택에 배열을 넣는 코드를 생성한다. 배열은 여러 개의 원소값을 가질 수 있으므로 원소 식 리스트를 순회해 피연산자 스택에 원소값들이 쌓이도록 한다. 스택에는 역순으로 삽입한다.
+```cpp
+auto ArrayLiteral::generate() -> void {
+  for (int i = values.size() - 1; i >= 0; --i) {
+    values[i]->generate();
+  }
+}
+```
+
+인자 식을 순회한 후에는 피연산자 스택에 쌓여 있는 원소값들을 모두 꺼내 배열을 생성하는 PushArray 명령을 생성한다. 인자는 원소 식의 개수다.
+```cpp
+writeCode(Instruction::PushArray, values.size());
+```
+
+다음은 테스트이다.
+```cpp
+func main() {
+  [1, 2 + 3, "element"];
+}
+```
+![alt text](./images/33.png)
+
+## 5.2.15 원소값 참조
+
+배열이나 맵의 원소를 참조하는 목적 코드를 생성한다. 원소값의 참조를 표현하는 노드에서는 피연산자 식과 인덱스 식을 차례로 순회해 목적 코드를 생성한다.
+```cpp
+auto GetElement::generate() -> void {
+  sub->generate();
+  index->generate();
+}
+```
+
+그리고 피연산자 스택에 쌓여 있는 두 값을 꺼내 원소를 참고하고, 참조한 원소값을 다시 피연산자 스택에 넣는 GetElement 명령을 생성한다.
+```cpp
+writeCode(Instruction::GetElement);
+```
+
+다음은 원소값 참조 테스트이다.
+```cpp
+func main() {
+  [1, 2][0];
+  {"one": 1}["one"];
+}
+```
+![alt text](./images/34.png)
+
+주소 4부터 6까지는 피연산자 스택에 배열을 생성한다.
+
+주소 7의 PushNumber 0 코드는 피연산자 스택에 숫자 0을 넣는다.
+
+주소 8의 GetElement 코드는 피연산자 스택에서 배열과 인덱스 값을 꺼내 원소를 참조하고, 참조한 원소값을 다시 피연산자 스택에 넣는다.
+
+## 5.2.16 원소값 수정
+
+원소값의 수정을 표현하는 노드에서는 대입 식과 피연산자 식, 인덱스 식을 차례로 순회해 목적 코드를 생성한다.
+```cpp
+auto SetElement::generate() -> void {
+  value->generate();
+  sub->generate();
+  index->generate();
+}
+```
+
+이후 피연산자 스택에 쌓여 있는 세 값을 꺼내 원소의 값을 수정한 후 수정한 값을 다시 피연산자 스택에 넣는 SetElement 명령을 생성한다.
+```cpp
+writeCode(Instruction::SetElement);
+```
+
+다음은 원소값 수정 테스트이다.
+```cpp
+func main() {
+  var array = [1, 2];
+  array[0] = "element";
+}
+```
+![alt text](images/35.png)
+
+## 5.3 마치며
+
+- 코드 생성은 컴파일 과정의 마지막 단계다.
+- 코드 생성의 목적은 실행 속도를 높이기 위함이다.
+- 비선형 구조인 구문 트리의 내용을 선형 구조로 만들어 실행 속도를 높인다.
+- 코드 생성 단계에서는 목적 코드를 생성한다.
+- 목적 코드는 기계가 제공하는 명령어로 작성한다.
+- 명령어는 역할에 따라 인자를 갖기도 한다.
+- 소스 코드의 흐름을 제어하는 문들은 점프 명령으로 표현된다.
+- 기계들은 저마다 서로 다른 명령어를 제공하므로 목적 코드는 특정 기계를 대상으로 한다.
+- 유랭 컴파일러는 유랭 가상머신을 대상으로 목적 코드를 생성한다.
+- 유랭 가상머신은 스택 자료구조를 사용해 식을 계산한다.
+- 식의 계산은 스택에 피연산자를 보관했다가 꺼내 계산하고 결과값을 다시 넣는 방식으로 한다.
+- 코드 생성기는 목적 코드를 생성하는 프로그램이다.
+- 코드 생성기의 입력은 구문 트리고, 출력은 목적 코드다.

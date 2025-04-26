@@ -1,11 +1,4 @@
 func main() {
-  if(true) {
-    print("if");
-  }
-  elif(true) {
-    print("elif");
-  }
-  else {
-    print("else");
-  }
+  var array = [1, 2];
+  array[0] = "element";
 }

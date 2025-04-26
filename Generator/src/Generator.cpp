@@ -25,8 +25,8 @@ static set<string> builtinFunctionList = { "sqrt", "length", "push", "pop", "era
 static size_t localSize;
 static vector<size_t> offsetStack;
 static list<map<string, size_t>> symbolStack;
-static vector<vector<size_t>> continueStack;
-static vector<vector<size_t>> breakStack;
+static vector<vector<size_t>> continueAddrStack;
+static vector<vector<size_t>> breakAddrStack;
 
 auto generate(Program* program) -> tuple<vector<Code>, map<string, size_t>, map<string, any>> {
   // 전역 변수 초기화
@@ -55,18 +55,24 @@ auto generate(Program* program) -> tuple<vector<Code>, map<string, size_t>, map<
 
 auto Function::generate() -> void {
   functionTable[name] = codeList.size();
-
   size_t temp = writeCode(Instruction::Alloca);
   initBlock();
+  for (string& name : parameters) {
+    setLocalIdx(name);
+  }
   for (Statement* node : block) {
     node->generate();
   }
   popBlock();
-
   writeCode(Instruction::Return);
   patchOperand(temp, localSize);
 }
-auto Return::generate() -> void {}
+auto Return::generate() -> void {
+  if (expression != nullptr) {
+    expression->generate();
+  }
+  writeCode(Instruction::Return);
+}
 auto Variable::generate() -> void {
   setLocalIdx(name);
   expression->generate();
@@ -80,6 +86,8 @@ auto Variable::generate2() -> void {
   writeCode(Instruction::PopOperand);
 }
 auto For::generate() -> void {
+  continueAddrStack.emplace_back();
+  breakAddrStack.emplace_back();
   pushBlock();
   variable->generate();
   size_t jumpAddress = codeList.size();
@@ -88,14 +96,30 @@ auto For::generate() -> void {
   for (Statement* node : block) {
     node->generate();
   }
+  for (size_t jumpAddr : continueAddrStack.back()) {
+    patchAddress(jumpAddr);
+  }
+  continueAddrStack.pop_back();
   expression->generate();
   writeCode(Instruction::PopOperand);
   writeCode(Instruction::Jump, jumpAddress);
   patchAddress(conditionJump);
   popBlock();
+  for (size_t jumpAddr : breakAddrStack.back()) {
+    patchAddress(jumpAddr);
+  }
+  breakAddrStack.pop_back();
 }
-auto Break::generate() -> void {}
-auto Continue::generate() -> void {}
+auto Break::generate() -> void {
+  if (breakAddrStack.empty()) return;
+  size_t breakAddr = writeCode(Instruction::Jump);
+  breakAddrStack.back().push_back(breakAddr);
+}
+auto Continue::generate() -> void {
+  if (continueAddrStack.empty()) return;
+  size_t jumpAddr = writeCode(Instruction::Jump);
+  continueAddrStack.back().push_back(jumpAddr);
+}
 auto If::generate() -> void {
   vector<size_t> idxList;
   for (int i = 0; i < conditions.size(); ++i) {
@@ -207,9 +231,24 @@ auto Unary::generate() -> void {
     }
   }
 }
-auto Call::generate() -> void {}
-auto GetElement::generate() -> void {}
-auto SetElement::generate() -> void {}
+auto Call::generate() -> void {
+  for (int i = arguments.size() - 1; i >= 0; --i) {
+    arguments[i]->generate();
+  }
+  writeCode(Instruction::GetGlobal, name);
+  writeCode(Instruction::Call, arguments.size());
+}
+auto GetElement::generate() -> void {
+  sub->generate();
+  index->generate();
+  writeCode(Instruction::GetElement);
+}
+auto SetElement::generate() -> void {
+  value->generate();
+  sub->generate();
+  index->generate();
+  writeCode(Instruction::SetElement);
+}
 auto GetVariable::generate() -> void {
   size_t idx = getLocalIdx(name);
   if (idx == SIZE_MAX) {
@@ -253,8 +292,19 @@ auto NumberLiteral::generate() -> void {
 auto StringLiteral::generate() -> void {
   writeCode(Instruction::PushString, value);
 }
-auto ArrayLiteral::generate() -> void {}
-auto MapLiteral::generate() -> void {}
+auto ArrayLiteral::generate() -> void {
+  for (int i = values.size() - 1; i >= 0; --i) {
+    values[i]->generate();
+  }
+  writeCode(Instruction::PushArray, values.size());
+}
+auto MapLiteral::generate() -> void {
+  for (auto& [key, value] : values) {
+    writeCode(Instruction::PushString, key);
+    value->generate();
+  }
+  writeCode(Instruction::PushMap, values.size());
+}
 
 static auto getLocalIdx(string name) -> size_t {
   for (map<string, size_t>& symbolTable : symbolStack) {
