@@ -13,3 +13,4 @@ auto scan(string&) -> vector<Token>;
 auto parse(vector<Token>&) -> Program*;
 tuple<vector<Code>, map<string, size_t>, set<string>> generate(Program*);
 void printObjectCode(tuple < vector<Code>, map<string, size_t>, set<string>>);
+auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>&) -> void;

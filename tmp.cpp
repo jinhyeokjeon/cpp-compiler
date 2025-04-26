@@ -225,7 +225,7 @@ auto execute(tuple<vector<Code>, map<string, size_t>> objectCode) -> void {
       else if (isString(lValue) && isNumber(rValue)) {
         string ret;
         for (int i = 0; i < toNumber(rValue); ++i)
-          ret += toString(lValue);
+          ret += toString(lValue)
         pushOperand(ret);
       }
       else {

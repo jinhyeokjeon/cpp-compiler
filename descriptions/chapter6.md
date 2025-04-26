@@ -223,3 +223,167 @@ startup()
 주소 2의 코드는 Exit 이므로 가상머신은 startup() 함수의 스택 프레임을 콜 스택에서 제거한 후 프로그램의 실행을 종료한다.
 
 ## 6.2 코드 실행기
+
+가상머신, 코드 실행기는 목적 코드 리스트를 순회하며 실행하는 프로그램을 뜻하므로 코드 리스트와 함수 테이블, 전역변수 셋을 입력받는다. 코드를 실행하는 execute() 함수를 Main.h 에 선언하자.
+```cpp
+auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>&) -> void;
+```
+
+main() 함수에서는 코드 리스트와 함수 테이블, 전역변수 셋을 인자로 넘겨 execute() 함수를 호출한다.
+```cpp
+vector<Token> tokenList = scan(sourceCode);
+Program* syntaxTree = parse(tokenList);
+tuple<vector<Code>, map<string, size_t>, set<string>> objectCode = generate(syntaxTree);
+execute(objectCode);
+```
+
+## 6.2.1 실행과 종료
+
+execute() 함수에서는 코드 리스트의 첫 번째 코드부터 실행하고자 startup() 함수의 스택 프레임을 생성해 콜 스택에 넣는다. 새로 생성된 스택 프레임의 명령어 포인터는 0이다.
+```cpp
+auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>&) -> void {
+  callStack.emplace_back();
+}
+```
+
+가상머신은 세 가지 동작을 반복한다. 첫 번째는 현재 실행중인 함수의 스택 프레임의 명령어 포인터로 실행할 코드를 가져온다. 두 번째는 코드의 명령어에 따라 분기해 적절한 동작을 수행한다. 세 번째는 명령어 포인터를 1 증가시킨다. 이 세 가지 동작을 반복하도록 무한 루프를 기본으로 한다.
+```cpp
+vector<Code> codeList = get<0>(objectCode);
+map<string, size_t> functionTable = get<1>(objectCode);
+for(const string& name: get<2>(objectCode)) {
+  global[name] = any();
+}
+while(true) {
+
+}
+```
+
+루프 안에서는 첫 번째 동작인 실행할 코드를 가져온다. 이때 명령어 포인터는 콜 스택의 최상단에 있는 스택 프레임의 명령어 포인터이다. 실행할 코드를 가져온 후에는 두 번째 동작인 코드의 명령에 따라 분기해 적절한 동작을 수행한다.
+```cpp
+Code code = codeList[callStack.back().instructionPointer];
+switch (code.instruction) {
+  case Instruction::Exit: {
+    callStack.pop_back();
+    return;
+  }
+}
+```
+
+명령어에 따라 적절한 동작을 수행한 후에는 세 번째 동작인 명령어 포인터를 1 증가시킨다. 이때 이 명령어 포인터는 콜 스택의 최상단에 있는 스택 프레임의 명령어 포인터다.
+```cpp
+callStack.back().instructionPointer += 1;
+```
+
+switch문에 Exit 명령을 추가했던 것과 같이 앞으로 할 일은 명령어별로 case문을 추가해 적절한 동작을 수행하도록 하는 것이다. 우선 "Hello, World!" 문자열을 출력하는 프로그램이 동작하도록 구현하자.
+
+## 6.2.2 함수의 주소
+
+먼저 case문을 추가해 GetGlobal "main" 코드가 실행되도록 구현한다.
+```cpp
+case Instruction::GetGlobal: {
+  break;
+}
+```
+
+GetGlobal 명령의 인자는 함수명이므로 코드의 인자를 문자열로 변환한다. 이후 함수명으로 함수 테이블을 검색해 함수 주소를 피연산자 스택에 넣는다. 등록된 함수 또는 전역변수가 없다면 에러를 출력하고 종료한다.
+```cpp
+case Instruction::GetGlobal: {
+  string name = toString(code.operand);
+  if (functionTable.count(name)) {
+    pushOperand(functionTable[name]);
+  }
+  else if (builtinFunctionTable.count(name)) {
+    pushOperand(name);
+  }
+  else if (global.count(name)) {
+    pushOperand(global[name]);
+  }
+  else {
+    cout << name << " doesn't exist." << endl;
+    exit(1);
+  }
+  break;
+}
+```
+
+## 6.2.3 함수 호출
+
+Call 코드가 실행되도록 구현한다. 호출할 함수의 주소는 피연산자 스택에 있으므로 피연산자 스택에서 값을 하나 꺼내온다. 이후 피연산자 스택에서 꺼내온 값이 주소라면 스택 프레임을 생성하고 생성한 스택 프레임의 명령어 포인터를 호출할 함수의 주소로 설정한다.
+```cpp
+any operand = popOperand();
+if (isSize(operand)) {
+  StackFrame stackFrame;
+  stackFrame.instructionPointer = toSize(operand);
+}
+```
+
+Call 명령의 인자는 현재 스택 프레임의 피연산자 스택에 쌓여 있는 함수 호출 인자의 개수다. 인자의 값만큼 현재 스택 프레임의 피연산자 스택에서 값을 꺼내 새로 생성한 스택 프레임의 변수 배열에 추가한다. 함수 호출 인자를 매개변수로 만드는 과정이다. 이후 초기화된 스택 프레임을 콜 스택에 넣고 명령어 포인터가 증가되지 않도록 continue문으로 Call 명령의 실행을 끝낸다.
+```cpp
+for (size_t i = 0; i < toSize(code.operand); ++i) {
+  stackFrame.variables.push_back(popOperand());
+}
+callStack.push_back(stackFrame);
+continue;
+```
+
+## 6.2.4 메모리 할당
+
+Alloca 명령은 지역변수들의 값을 저장할 공간을 확보한다. 지역변수들의 값은 스택 프레임의 변수 배열에 저장되므로 변수 배열의 크기를 늘리면 된다.
+```cpp
+size_t localSize = toSize(code.operand);
+callStack.back().variables.resize(localSize);
+break;
+```
+
+## 6.2.5 문자열 리터럴
+
+PushString 명령은 문자열을 인자로 가진다. 단순히 피연산자 스택에 명령의 인자값을 넣으면 구현이 끝난다.
+```cpp
+cas Instruction::PushString: {
+  pushOperand(code.operand);
+  break;
+}
+```
+
+## 6.2.6 콘솔 출력
+
+Print 명령은 콘솔에 출력할 값의 개수를 인자로 가진다. 인자의 크기만큼 피연산자 스택에서 값을 꺼내 콘솔에 출력한다.
+```cpp
+for (size_t i = 0; i < toSize(code.operand); ++i) {
+  any value = popOperand();
+  cout << value;
+}
+break;
+```
+
+## 6.2.7 return 문
+
+return 명령은 함수의 값을 반환하고 함수를 종료한다. 함수의 반환값으로 현재 스택 프레임의 피연산자 스택에 있는 값을 꺼내 임시로 보관한다. 피연산자 스택에 남아 있는 값이 없다면 널을 기본값으로 한다.
+
+이후 현재 스택 프레임을 콜 스택에서 제거해 함수를 종료한다. 이제 현재 스택 프레임은 종료된 함수를 호출했던 함수의 스택 프레임이 된다. 이후 임시로 보관했던 반환값을 현재 스택 프레임의 피연산자 스택에 넣는다.
+```cpp
+any result = nullptr;
+if (!callStack.back().operandStack.empty()) {
+  result = callStack.back().operandStack.back();
+}
+callStack.pop_back();
+callStack.back().operandStack.push_back(result);
+break;
+```
+
+return문이 종료되면, 현재 스택프레임은 종료된 함수를 호출했던 함수의 스택 프레임이 되는데, 이 상태에서 ++callStack.back().instructionPointer; 코드가 실행되므로, Call 명령어 다음 명령어를 실행하게 된다.
+
+다음은 함수 호출 및 print, return 테스트이다.
+```cpp
+func main() {
+  hello();
+  hello();
+}
+
+func hello() {
+  printLine("Hello, World!");
+}
+```
+![alt text](./images/37.png)
+
+## 6.2.8 덧셈 연산
