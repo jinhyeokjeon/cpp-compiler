@@ -31,7 +31,7 @@ auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>& objectCode) 
   vector<Code> codeList = get<0>(objectCode);
   map<string, size_t> functionTable = get<1>(objectCode);
   for (const string& name : get<2>(objectCode)) {
-    global[name] = any();
+    global[name] = 0;
   }
   while (true) {
     Code code = codeList[callStack.back().instructionPointer];
@@ -76,10 +76,21 @@ auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>& objectCode) 
       }
       callStack.pop_back();
       callStack.back().operandStack.push_back(result);
+      collectGarbage();
       break;
     }
-    case Instruction::Jump:
-    case Instruction::ConditionJump:
+    case Instruction::Jump: {
+      callStack.back().instructionPointer = toSize(code.operand);
+      continue;
+    }
+    case Instruction::ConditionJump: {
+      any condition = popOperand();
+      if (isTrue(condition)) {
+        break;
+      }
+      callStack.back().instructionPointer = toSize(code.operand);
+      continue;
+    }
     case Instruction::Print: {
       for (size_t i = 0; i < toSize(code.operand); ++i) {
         any value = popOperand();
@@ -91,23 +102,231 @@ auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>& objectCode) 
       cout << endl;
       break;
     }
-    case Instruction::LogicalOr:
-    case Instruction::LogicalAnd:
-    case Instruction::Add:
-    case Instruction::Subtract:
-    case Instruction::Multiply:
-    case Instruction::Divide:
-    case Instruction::Modulo:
-    case Instruction::Equal:
-    case Instruction::NotEqual:
-    case Instruction::LessThan:
-    case Instruction::GreaterThan:
-    case Instruction::LessOrEqual:
-    case Instruction::GreaterOrEqual:
-    case Instruction::Absolute:
-    case Instruction::ReverseSign:
-    case Instruction::GetElement:
-    case Instruction::SetElement:
+    case Instruction::LogicalOr: {
+      any value = popOperand();
+      if (isTrue(value)) {
+        pushOperand(value);
+        callStack.back().instructionPointer = toSize(code.operand);
+        continue;
+      }
+      break;
+    }
+    case Instruction::LogicalAnd: {
+      any value = popOperand();
+      if (isFalse(value)) {
+        pushOperand(value);
+        callStack.back().instructionPointer = toSize(code.operand);
+        continue;
+      }
+      break;
+    }
+    case Instruction::Add: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) + toNumber(rValue));
+      }
+      else if (isString(lValue) && isString(rValue)) {
+        pushOperand(toString(lValue) + toString(rValue));
+      }
+      else {
+        cout << lValue << " + " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::Subtract: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) - toNumber(rValue));
+      }
+      else {
+        cout << lValue << " - " << rValue << " is wrong" << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::Multiply: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) * toNumber(rValue));
+      }
+      else if (isString(lValue) && isNumber(rValue)) {
+        string ret = "";
+        for (int i = 0; i < toNumber(rValue); ++i) {
+          ret += toString(lValue);
+        }
+        pushOperand(ret);
+      }
+      else {
+        cout << lValue << " * " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::Divide: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) / toNumber(rValue));
+      }
+      else {
+        cout << lValue << " / " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::Modulo: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(fmod(toNumber(lValue), toNumber(rValue)));
+      }
+      else {
+        cout << lValue << " % " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::Equal: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isBoolean(lValue) && isBoolean(rValue)) {
+        pushOperand(toBoolean(lValue) == toBoolean(rValue));
+      }
+      else if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) == toNumber(rValue));
+      }
+      else if (isString(lValue) && isString(rValue)) {
+        pushOperand(toString(lValue) == toString(rValue));
+      }
+      else {
+        cout << lValue << " == " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::NotEqual: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isBoolean(lValue) && isBoolean(rValue)) {
+        pushOperand(toBoolean(lValue) != toBoolean(rValue));
+      }
+      else if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) != toNumber(rValue));
+      }
+      else if (isString(lValue) && isString(rValue)) {
+        pushOperand(toString(lValue) != toString(rValue));
+      }
+      else {
+        cout << lValue << " != " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::LessThan: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) < toNumber(rValue));
+      }
+      else {
+        cout << lValue << " < " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::GreaterThan: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) > toNumber(rValue));
+      }
+      else {
+        cout << lValue << " > " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::LessOrEqual: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) <= toNumber(rValue));
+      }
+      else {
+        cout << lValue << " <= " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::GreaterOrEqual: {
+      any rValue = popOperand();
+      any lValue = popOperand();
+      if (isNumber(lValue) && isNumber(rValue)) {
+        pushOperand(toNumber(lValue) >= toNumber(rValue));
+      }
+      else {
+        cout << lValue << " >= " << rValue << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::Absolute: {
+      any value = popOperand();
+      if (isNumber(value)) {
+        pushOperand(fabs(toNumber(value)));
+      }
+      else {
+        cout << "+" << value << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::ReverseSign: {
+      any value = popOperand();
+      if (isNumber(value)) {
+        pushOperand(-toNumber(value));
+      }
+      else {
+        cout << "-" << value << " is wrong." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::GetElement: {
+      any index = popOperand();
+      any object = popOperand();
+      if (isArray(object) && isNumber(index)) {
+        pushOperand(getValueOfArray(object, index));
+      }
+      else if (isMap(object) && isString(index)) {
+        pushOperand(getValueOfMap(object, index));
+      }
+      else {
+        cout << "Reference error." << endl;
+        exit(1);
+      }
+      break;
+    }
+    case Instruction::SetElement: {
+      any index = popOperand();
+      any object = popOperand();
+      if (isArray(object) && isNumber(index)) {
+        pushOperand(setValueOfArray(object, index, peekOperand()));
+      }
+      else if (isMap(object) && isString(index)) {
+        pushOperand(setValueOfMap(object, index, peekOperand()));
+      }
+      else {
+        cout << "Reference error." << endl;
+        exit(1);
+      }
+      break;
+    }
     case Instruction::GetGlobal: {
       string name = toString(code.operand);
       if (functionTable.count(name)) {
@@ -125,19 +344,66 @@ auto execute(tuple<vector<Code>, map<string, size_t>, set<string>>& objectCode) 
       }
       break;
     }
-    case Instruction::SetGlobal:
-    case Instruction::GetLocal:
-    case Instruction::SetLocal:
-    case Instruction::PushNull:
-    case Instruction::PushBoolean:
-    case Instruction::PushNumber:
+    case Instruction::SetGlobal: {
+      string name = toString(code.operand);
+      if (global.count(name) == 0) {
+        cout << name << " doesn't exist." << endl;
+        exit(1);
+      }
+      global[name] = peekOperand();
+      break;
+    }
+    case Instruction::GetLocal: {
+      size_t index = toSize(code.operand);
+      pushOperand(callStack.back().variables[index]);
+      break;
+    }
+    case Instruction::SetLocal: {
+      size_t index = toSize(code.operand);
+      callStack.back().variables[index] = peekOperand();
+      break;
+    }
+    case Instruction::PushNull: {
+      pushOperand(nullptr);
+      break;
+    }
+    case Instruction::PushBoolean: {
+      pushOperand(code.operand);
+      break;
+    }
+    case Instruction::PushNumber: {
+      pushOperand(code.operand);
+      break;
+    }
     case Instruction::PushString: {
       pushOperand(code.operand);
       break;
     }
-    case Instruction::PushArray:
-    case Instruction::PushMap:
-    case Instruction::PopOperand:
+    case Instruction::PushArray: {
+      Array* result = new Array();
+      size_t size = toSize(code.operand);
+      for (size_t i = 0; i < size; ++i) {
+        result->values.push_back(popOperand());
+      }
+      pushOperand(result);
+      objects.push_back(result);
+      break;
+    }
+    case Instruction::PushMap: {
+      Map* result = new Map();
+      for (size_t i = 0; i < toSize(code.operand); ++i) {
+        any value = popOperand();
+        any key = popOperand();
+        result->values[toString(key)] = value;
+      }
+      pushOperand(result);
+      objects.push_back(result);
+      break;
+    }
+    case Instruction::PopOperand: {
+      popOperand();
+      break;
+    }
     }
     ++callStack.back().instructionPointer;
   }
@@ -152,14 +418,44 @@ static auto popOperand() -> any {
   return value;
 }
 static auto peekOperand() -> any {
-
+  return callStack.back().operandStack.back();
 }
 static auto collectGarbage() -> void {
-
+  for (StackFrame& stackFrame : callStack) {
+    for (any& value : stackFrame.variables) {
+      markObject(value);
+    }
+    for (any& value : stackFrame.operandStack) {
+      markObject(value);
+    }
+  }
+  for (auto& [key, value] : global) {
+    markObject(value);
+  }
+  sweepObject();
 }
-static auto markObject(any) -> void {
-
+static auto markObject(any value) -> void {
+  if (isArray(value)) {
+    if (toArray(value)->isMarked) return;
+    toArray(value)->isMarked = true;
+    for (any& value : toArray(value)->values) {
+      markObject(value);
+    }
+  }
+  else if (isMap(value)) {
+    if (toMap(value)->isMarked) return;
+    for (auto& [key, value] : toMap(value)->values) {
+      markObject(value);
+    }
+  }
 }
 static auto sweepObject() -> void {
-
+  objects.remove_if([](Object* object) {
+    if (object->isMarked) {
+      object->isMarked = false;
+      return false;
+    }
+    delete object;
+    return true;
+    });
 }

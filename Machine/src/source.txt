@@ -1,3 +1,20 @@
+var evenList = [];
+var oddList = [];
+var even = 0;
+var odd = 0;
+
 func main() {
-  printLine(clock());
+  for(var i = 0; i < 10; ++i) {
+    if(i % 2 == 0) {
+      ++even;
+      push(evenList, i);
+    }
+    else {
+      ++odd;
+      push(oddList, i);
+    }
+  }
+  printLine("even: ", even, " / odd: ", odd);
+  printLine(evenList);
+  printLine(oddList);
 }

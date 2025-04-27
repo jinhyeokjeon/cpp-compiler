@@ -164,7 +164,12 @@ auto Or::generate() -> void {
   rhs->generate();
   patchAddress(logicalOr);
 }
-auto And::generate() -> void {}
+auto And::generate() -> void {
+  lhs->generate();
+  size_t logicalAnd = writeCode(Instruction::LogicalAnd);
+  rhs->generate();
+  patchAddress(logicalAnd);
+}
 auto Relational::generate() -> void {
   map<Kind, Instruction> instructions = {
     {Kind::Equal,          Instruction::Equal},

@@ -387,3 +387,329 @@ func hello() {
 ![alt text](./images/37.png)
 
 ## 6.2.8 덧셈 연산
+
+Add 명령은 두 개의 피연산자를 가지는 덧셈 명령이다. 먼저 피연산자 스택에서 오른쪽 피연산자와 왼쪽 피연산자를 차례로 꺼낸다. 코드를 생성할 때 왼쪽 식 노드를 먼저 순회한 후 오른쪽 식 노드를 순해했다는 것과 스택을 사용해 계산하고 있다는 것을 상기하자.
+```cpp
+case Instruction::Add: {
+  any rValue = popOperand();
+  any lValue = popOperand();
+}
+```
+
+연산에 필요한 피연산자를 꺼내온 후에는 두 피연산자의 데이터 타입에 따라 연산을 하고 결과값을 다시 피연산자 스택에 넣는다.
+```cpp
+if (isNumber(lValue) && isNumber(rValue)) {
+  pushOperand(toNumber(lValue) + toNumber(rValue));
+}
+else if (isString(lValue) && isString(rValue)) {
+  pushOperand(toString(lValue) + toString(rValue));
+}
+else {
+  cout << lValue << " + " << rValue << " is wrong." << endl;
+  exit(1);
+}
+```
+
+## 6.2.9 논리 or 연산
+
+LogicalOr 명령은 왼쪽 식의 값이 참인지 거짓인지에 따라 동작이 달라진다. 피연산자 스택에서 꺼낸 왼쪽 식의 결과가 거짓이라면, 오른쪽 식의 결과가 or 연산의 결과이므로 아무것도 하지 않는다.
+
+왼쪽 식의 결과가 참이라면 이 값이 or 연산의 결과이므로 피연산자 스택에서 꺼냈던 값을 그대로 다시 넣는다. 그리고 오른쪽 식의 코드를 실행하지 않도록 명령어 포인터를 LogicalOr 명령의 인자의 주소로 설정하고, continue문을 사용한다. 만약 break 문을 사용했다면 while문의 끝에서 명령어 포인터가 1 증가하게 된다.
+```cpp
+case Instruction::LogicalOr: {
+  any value = popOperand();
+  if (isTrue(value)) {
+    pushOperand(value);
+    callStack.back().instructionPointer = toSize(code.operand);
+    continue;
+  }
+  break;
+}
+```
+
+논리 and 연산도 비슷하게 구현 가능하다.
+
+## 6.2.10 변수 참조
+
+GetLocal 명령은 지역변수의 값을 참조한다. 참조할 지역변수의 오프셋을 인자로 가지므로 현재 스택 프레임의 변수 배열에서 오프셋 위치에 저장돼 있는 값을 피연산자 스택에 넣는다.
+```cpp
+case Instruction::GetLocal: {
+  size_t index = toSize(code.operand);
+  pushOperand(callStack.back().variables[index]);
+  break;
+}
+```
+
+SetLocal 명령은 지역변수의 값을 변경한다. 마찬가지로 오프셋을 인자로 가지므로 현재 스택 프레임의 변수 배열의 오프셋 위치에 값을 대입한다.
+```cpp
+case Instruction::SetLocal: {
+  size_t index = toSize(code.operand);
+  callStack.back().variables[index] = peekOperand();
+  break;
+}
+```
+
+대입 연산은 연산의 결과를 피연산자 스택에 남겨야 하므로 popOperand()가 아닌 peekOperand() 함수를 사용한다. peekOperand() 보조함수는 스택에서 값을 제거하지 않는다.
+```cpp
+static auto peekOperand() -> any {
+  return callStack.back().operandStack.back();
+}
+```
+
+GetGlobal 명령은 전역변수를 참조하는 명령어인데, 이름을 인자로 가진다. 따라서 map<string, any> global에 해당 이름으로 등록된 전역변수가 있다면 값을 피연산자 스택에 넣는다.
+```cpp
+else if (global.count(name)) {
+  pushOperand(global[name]);
+}
+```
+
+SetGlobal 명령은 전역변수의 값을 변경한다. 명령의 인자인 전역변수 이름과 피연산자 스택에서 꺼낸 값을 global 전역변수에 키와 값으로 등록한다. 
+
+> 책과 다르게 전역변수의 선언이 가능하도록 바꾸었으므로 해당 이름의 전역변수가 존재하는지 먼저 확인한다.
+```cpp
+case Instruction::SetGlobal: {
+  string name = toString(code.operand);
+  if (global.count(name) == 0) {
+    cout << name << " doesn't exist." << endl;
+    exit(1);
+  }
+  global[name] = peekOperand();
+  break;
+}
+```
+
+## 6.2.11 for문과 if문
+
+코드를 생성하면서 for문과 if문 노드에서는 두 가지 종류의 점프 명령을 생성했다. 하나는 조건 없는 점프를 하는 Jump 명령이고 다른 하나는 조건식의 결과에 따라 점프를 하는 ConditionJump 명령이다. 두 명령 모두 점프할 주소를 인자로 가진다.
+
+Jump 명령의 구현은 간단하게 현재 스택 프레임의 명령어 포인터를 인자의 주소로 변경한다. break문이 아닌 continue문을 사용한다.
+```cpp
+case Instruction::Jump: {
+  callStack.back().instructionPointer = toSize(code.operand);
+  continue;
+}
+```
+
+ConditionJump 명령은 조건식의 결과에 따라 점프를 하므로 우선 피연산자 스택에서 조건식의 결과값을 꺼내온다. 조건식의 결과값이 참이라면 점프를 하지 않고, 참이 아니라면 스택 프레임의 명령어 포인터를 인자의 주소로 변경하고 continue문을 적는다.
+```cpp
+case Instruction::ConditionJump: {
+  any condition = popOperand();
+  if (isTrue(condition)) {
+    break;
+  }
+  callStack.back().instructionPointer = toSize(code.operand);
+  continue;
+}
+```
+
+## 6.2.12 내장함수
+
+> 책에서는 아래와 같이 GetGlobal 명령의 인자가 내장함수의 이름이면 내장함수 자체를 스택에 푸쉬한다. 나는 이렇게 하지 않고 내장 함수의 이름을 스택에 푸쉬하고, Call 함수 내에서 내장함수를 찾아 호출하는 방식으로 구현하겠다.
+
+```cpp
+else if (builtinFunctionTable.count(name))
+  pushOperand(builtinFunctionTable[name]);
+
+-> 
+
+else if (builtinFunctionTable.count(name)) {
+  pushOperand(name);
+}
+
+if (isBuiltinFunction(operand)) {
+  vector<any> arguments;
+  for (auto i = 0; i < toSize(code.operand); ++i)
+    arguments.push_back(popOperand());
+  pushOperand(toBuiltinFunction(operand)(arguments));
+  break;
+}
+
+-> 
+
+else if (isString(operand) && builtinFunctionTable.count(toString(operand))) {
+  vector<any> arguments;
+  for (size_t i = 0; i < toSize(code.operand); ++i) {
+    arguments.push_back(popOperand());
+  }
+  pushOperand(builtinFunctionTable[toString(operand)](arguments));
+  break;
+}
+```
+
+## 6.2.13 배열 리터럴
+
+PushArray 명령은 배열을 생성해 피연산자 스택에 넣는 명령이다. 우선 피연산자 스택에 넣을 배열을 생성한다. PushArray 명령의 인자는 원소의 개수이므로 피연산자 스택에서 원소의 개수만큼 꺼내 생성해둔 배열에 추가한다.
+```cpp
+case Instruction::PushArray: {
+  Array* result = new Array();
+  size_t size = toSize(code.operand);
+  for (size_t i = 0; i < size; ++i) {
+    result->values.push_back(popOperand());
+  }
+  pushOperand(result);
+  break;
+}
+```
+
+## 6.2.14 원소값 참조
+
+GetElement 명령은 배열이나 맵의 원소값을 참조한다. 우선 피연산자 스택에서 인덱스 식과 피연산자 식의 값을 차례로 꺼내온다. GetElement 노드에서 코드를 생성할 때 피연산자 식을 먼저 순회했음을 주의한다.
+```cpp
+case Instruction::GetElement: {
+  any index = popOperand();
+  any object = popOperand();
+  if (isArray(object) && isNumber(index)) {
+    pushOperand(getValueOfArray(object, index));
+  }
+  else if (isMap(object) && isString(index)) {
+    pushOperand(getValueOfMap(object, index));
+  }
+  else {
+    cout << "Reference error." << endl;
+    exit(1);
+  }
+  break;
+}
+```
+
+## 6.2.15 원소값 변경
+
+SetElement 명령은 배열이나 맵의 원소값을 변경한다. GetElement 명령과 마찬가지로 피연산자 스택에서 인덱스 식과 피연산자 식의 값을 차례로 꺼내온다. 이후 피연산자 스택에 있는 값으로 배열 또는 맵의 원소값을 변경한다.
+```cpp
+case Instruction::SetElement: {
+  any index = popOperand();
+  any object = popOperand();
+  if (isArray(object) && isNumber(index)) {
+    pushOperand(setValueOfArray(object, index, peekOperand()));
+  }
+  else if (isMap(object) && isString(index)) {
+    pushOperand(setValueOfMap(object, index, peekOperand()));
+  }
+  else {
+    cout << "Reference error." << endl;
+    exit(1);
+  }
+  break;
+}
+```
+
+## 6.2.16 가비지 컬렉터
+
+앞선 PushArray 명령의 구현과 같이 유랭 가상머신은 배열과 맵을 힙에 생성하므로 동적 메모리를 관리할 필요가 있다. 알려진 메모리 관리 기법들 중 구현이 간단한 **mark-sweep**를 사용해보자.
+
+mark는 표시를, sweep는 해제를 뜻한다. 따라서 마크 스윕은 할당한 메모리에 참조 여부를 표시하고 표시가 돼 있지 않은 메모리를 해제하는 방식이다.
+
+참조 여부를 멤버로 갖는 구조체를 정의하자. isMarked 멤버변수가 true면 참조되고 있는 객체다.
+```cpp
+Struct Object {
+  bool isMarked = false;
+  virtual ~Object() = default;
+};
+```
+
+실제로 관리하려는 메모리는 배열과 맵이므로 Array 구조체와 Map 구조체가 Object 구조체를 상속하도록 한다.
+```cpp
+struct Array: Object {
+  vector<any> values;
+};
+```
+
+다음은 객체에 참조 표시를 하는 함수이다. 매개변수로 받은 값이 배열이나 맵이면 isMarked 멤버변수의 값을 true로 바꿔 참조되고 있음을 표시한다.
+
+배열은 배열이나 맵을, 맵은 맵이나 배열을 원소로 가질 수 있으므로 원소마다 markObject() 함수를 다시 호출해 재귀적으로 표시한다.
+```cpp
+if (isArray(value)) {
+  if (toArray(value)->isMarked) return;
+  toArray(value)->isMarked = true;
+  for (any& value : toArray(value)->values) {
+    markObject(value);
+  }
+}
+else if (isMap(value)) {
+  if (toMap(value)->isMarked) return;
+  for (auto& [key, value] : toMap(value)->values) {
+    markObject(value);
+  }
+}
+```
+
+참조의 시작접은 변수다. 어떤 변수에 담긴 값이 배열이나 맵이라면 그 객체는 참조되고 있다고 볼 수 있다. 변수들을 순회하는 함수를 정의하자.
+
+배열이나 맵이 생성되는 시점이나 함수의 반환값으로 사용되고 있는 시점에서는 식에서 피연산자로서만 참조되고 있는 경우도 있으므로 스택 프레임의 피연산자 스택도 순회한다.
+
+마찬가지로 전역 변수가 참조하고 있는 배열과 맵도 참조 표시가 되도록 한다.
+```cpp
+static auto collectGarbage() -> void {
+  for (auto& stackFrame : callStack) {
+    for (auto& value : stackFrame.variables) {
+      markObject(value);
+    }
+    for (auto& value : stackFrame.operandStack) {
+      markObject(value);
+    }
+  }
+  for (auto& [key, value] : global) {
+    markObject(value);
+  }
+  sweepObject();
+}
+```
+
+마크 스윕에서 마크를 했으니 이제 스윕을 할 차례다. 할당한 메모리를 해제하기 위해서는 접근이 가능해야 하므로 참조 가능 여부와 관계없이 할당한 모든 맵과 배열을 담는 리스트를 선언한다.
+```cpp
+static list<Object*> objects;
+```
+
+배열을 생성하는 pushArray 명령과 맵을 생성하는 PushMap 명령의 구현에서 생성한 배열과 맵을 objects 리스트에 담는다.
+```cpp
+pushOperand(result);
+objects.push_back(result);
+break;
+```
+
+스윕은 단순히 objects 리스트를 순회하면서 참조 표시가 된 객체는 다음번의 마크 단계를 위해 표시를 제거하고, 표시가 돼 있지 않은 객체는 메모리를 해제한 후 objects 리스트에서 제거한다.
+```cpp
+static auto sweepObject() -> void {
+  objects.remove_if([](Object* object) {
+    if (object->isMarked) {
+      object->isMarked = false;
+      return false;
+    }
+    delete object;
+    return true;
+  });
+}
+```
+
+스윕은 마크의 다음 단계이므로 collectGarbage() 함수에서 일련의 마크 과정이 끝난 후 실행하면 된다. 이로써 마크 스윕의 구현이 끝났다.
+
+이제 남은 것은 언제, 그래고 얼마나 자주 collectGarbage() 함수를 호출해 마크 스윕을 실행할지를 결정하는 것이다. 마크 스윕을 실행하는 중에는 코드의 실행이 중단되므로 호출 주기가 짧을수록 메모리는 덜 사용하겠지만 프로그램의 실행은 더 자주 중단된다.
+
+반대로 호출 주기가 길수록 프로그램의 실행은 덜 중단되겠지만 메모리는 더 많이 사용한다. 또한 마크 스윕을 한 번 실행하는 데 드는 비용은 그 순강 생ㅅ어돼 있는 객체의 개수에 비례해 증가하므로 단순히 더 자주 호출한다고 프로그램의 실행 시간이 더 많이 늘어나고, 덜 자주 호출한다고 더 적게 늘어난다고 단정할 수 없다.
+
+여기서는 단순하게 Return 명령을 실행하는 case문의 끝 부분에 collectGarbage() 함수를 호출한다.
+
+다음은 테스트이다.
+```cpp
+var evenList = [];
+var oddList = [];
+var even = 0;
+var odd = 0;
+
+func main() {
+  for(var i = 0; i < 10; ++i) {
+    if(i % 2 == 0) {
+      ++even;
+      push(evenList, i);
+    }
+    else {
+      ++odd;
+      push(oddList, i);
+    }
+  }
+  printLine("even: ", even, " / odd: ", odd);
+  printLine(evenList);
+  printLine(oddList);
+}
+```
+![alt text](./images/38.png)
